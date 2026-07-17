@@ -59,8 +59,8 @@ never labeled as one.
 | active_session | ✅ | ✅ |
 | calendar_week_aggregation | ✅ | ✅ |
 | model_breakdown | ✅ | ✅ |
-| provider_quota | ✅ (from local rate-limit snapshots) | ✅ (from Claude Code's local quota cache) |
-| credits | ✅ (when reported) | ❌ |
+| provider_quota | ✅ (local rate-limit snapshots, or live with `--live`) | ✅ (Claude Code's local quota cache, or live with `--live`) |
+| credits | ✅ (when reported; always with `--live`) | ❌ |
 | reset_times | ✅ | ✅ |
 | model-scoped limits | ❌ (not reported) | ✅ (e.g. a per-model weekly cap) |
 | history | ✅ | ✅ |
@@ -96,8 +96,19 @@ Stable Rust required ([rustup](https://rustup.rs)):
 ```bash
 git clone https://github.com/ewijaya/lmtop
 cd lmtop
-cargo build --release
-./target/release/lmtop
+cargo install --path . --locked
+lmtop
+```
+
+`cargo install` places the binary in `~/.cargo/bin`, which rustup already
+put on your `PATH` — so `lmtop` runs from any directory, like `top` or
+`htop`. (Homebrew and the pre-built binary installs above are also global.)
+
+If you prefer a plain build without installing, `cargo build --release`
+produces `./target/release/lmtop`; make that global with:
+
+```bash
+sudo install -m755 target/release/lmtop /usr/local/bin/lmtop
 ```
 
 > **Not packaged in `apt`.** `apt install lmtop` resolves against Debian and
@@ -109,6 +120,7 @@ cargo build --release
 
 ```bash
 lmtop                     # combined dashboard
+lmtop --live              # + live quota from the providers (opt-in network)
 lmtop --provider codex    # Codex only
 lmtop --provider claude   # Claude only
 lmtop --offline           # never touch the network
@@ -119,6 +131,19 @@ lmtop snapshot --json     # machine-readable snapshot
 lmtop doctor              # discovery, parse health, capabilities
 lmtop --version
 ```
+
+### Live quota (`--live`)
+
+By default lmtop is local-first: quota comes from files the provider CLIs
+write, so it is only as fresh as your last agent activity **on this
+machine** — usage from another device is invisible until then. With
+`--live` (or `network_quota = true` per provider in the config) lmtop asks
+the same usage endpoints the CLIs' own status screens use, authenticated
+with the access token each CLI already stores locally. That keeps the
+dashboard in sync with what `claude` `/usage` and the Codex banner report,
+including Codex credits. The token is read for the request header and
+nothing else — never logged, stored, or sent elsewhere (`docs/privacy.md`
+has the exact contract). `--offline` always wins over `--live`.
 
 ## Keyboard shortcuts
 
@@ -136,14 +161,22 @@ m        Focus model breakdown   ?      Help
 
 Honesty section — read this before trusting any number:
 
-- **Codex quota** comes from rate-limit snapshots that the Codex CLI writes
-  into its own session logs. They are authoritative but only as fresh as
-  your last Codex activity; if you haven't used Codex for hours, the quota
-  shown is hours old (freshness is displayed).
-- **Claude quota** comes from Claude Code's own cached quota view in
-  `~/.claude.json`, refreshed only while Claude Code itself is running —
-  same staleness caveat as above, and the age is displayed. If the cache is
-  missing, quota is marked *unavailable* rather than guessed.
+- **Codex quota** (without `--live`) comes from rate-limit snapshots that
+  the Codex CLI writes into its own session logs. They are authoritative
+  but only as fresh as your last Codex activity on this machine; if you
+  haven't used Codex for hours, the quota shown is hours old (freshness is
+  displayed). Use `--live` for current numbers.
+- **Claude quota** (without `--live`) comes from Claude Code's own cached
+  quota view in `~/.claude.json`, refreshed only while Claude Code itself
+  is running — same staleness caveat as above, and the age is displayed.
+  If the cache is missing, quota is marked *unavailable* rather than
+  guessed. Use `--live` for current numbers.
+- **A window whose reset time has passed is shown as *stale*** (the cached
+  percentage describes a finished window, not the current one), never as a
+  live value.
+- **Codex `--live` can be refused**: the usage endpoint sits behind bot
+  protection that occasionally answers 403. lmtop backs off, says so in
+  the health line, and falls back to the local snapshots.
 - **Observed tokens ≠ quota consumption.** Providers weight models, cached
   tokens, and request overhead differently and don't publish the formula.
 - **Burn velocity is an extrapolation** of the provider's own recent
@@ -157,7 +190,10 @@ Honesty section — read this before trusting any number:
 
 Local-first: no network calls, no telemetry, no API keys, no credential
 reads, no prompt content — collectors parse token counts and identifiers
-from session metadata and nothing else. Full model: `docs/privacy.md`.
+from session metadata and nothing else. The one exception is the opt-in
+`--live` quota fetch described above, which reads each CLI's stored access
+token solely to call that provider's own usage endpoint. Full model:
+`docs/privacy.md`.
 
 ## Platform status
 
