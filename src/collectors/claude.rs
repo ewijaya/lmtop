@@ -487,6 +487,7 @@ fn parse_claude_usage_flat(usage: &Value) -> TokenCounts {
         cache_creation: read_u64(usage, "cache_creation_input_tokens"),
         output: read_u64(usage, "output_tokens"),
         reasoning: 0,
+        unattributed: 0,
         other,
     }
 }

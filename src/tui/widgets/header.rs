@@ -1,5 +1,5 @@
+use crate::alerts::Severity;
 use crate::app::App;
-use crate::domain::Provider;
 use crate::tui::theme::{Theme, fmt_age};
 use chrono::{DateTime, Utc};
 use ratatui::Frame;
@@ -18,7 +18,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             " PAUSED ",
             Style::default()
                 .fg(ratatui::style::Color::Black)
-                .bg(ratatui::style::Color::Yellow)
+                .bg(theme.warn())
                 .add_modifier(Modifier::BOLD),
         ));
     } else {
@@ -27,19 +27,34 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             theme.dim(),
         ));
     }
-    for provider in Provider::ALL {
-        let (color, label) = match app.provider(provider) {
-            Some(p) => theme.status(p.health.status),
-            None => (theme.dim().fg.unwrap_or_default(), "starting"),
+    // A fresh alert takes the header over; provider health otherwise.
+    if let Some(alert) = app.flash_alert(now) {
+        let color = match alert.severity {
+            Severity::Critical => theme.bad(),
+            Severity::Warning => theme.warn(),
         };
         spans.push(Span::styled(
-            format!(" {} ", provider.display_name()),
-            Style::default().fg(theme.provider(provider)),
+            format!(" ⚠ {} — {} ", alert.title, alert.body),
+            Style::default()
+                .fg(ratatui::style::Color::Black)
+                .bg(color)
+                .add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(
-            format!("{label} "),
-            Style::default().fg(color),
-        ));
+    } else {
+        for provider in &app.enabled_providers {
+            let (color, label) = match app.provider(*provider) {
+                Some(p) => theme.status(p.health.status),
+                None => (theme.dim().fg.unwrap_or_default(), "starting"),
+            };
+            spans.push(Span::styled(
+                format!(" {} ", provider.display_name()),
+                Style::default().fg(theme.provider(*provider)),
+            ));
+            spans.push(Span::styled(
+                format!("{label} "),
+                Style::default().fg(color),
+            ));
+        }
     }
     let clock = now
         .with_timezone(&chrono::Local)
@@ -53,17 +68,32 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
 
 pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, now: DateTime<Utc>) {
     let keys: &[(&str, &str)] = if area.width < 80 {
-        &[("1-3", "view"), ("?", "help"), ("q", "quit")]
+        &[("1-4", "view"), ("?", "help"), ("q", "quit")]
+    } else if area.width < 110 {
+        &[
+            ("1", "codex"),
+            ("2", "claude"),
+            ("3", "all"),
+            ("4", "plan"),
+            ("Tab", "panel"),
+            ("v", "chart"),
+            ("Enter", "detail"),
+            ("/", "filter"),
+            ("?", "help"),
+            ("q", "quit"),
+        ]
     } else {
         &[
             ("1", "codex"),
             ("2", "claude"),
             ("3", "all"),
+            ("4", "planner"),
             ("Tab", "panel"),
-            ("s", "sessions"),
-            ("m", "models"),
-            ("w", "weekly"),
-            ("h", "history"),
+            ("v", "chart mode"),
+            ("←→", "pan"),
+            ("Enter", "detail"),
+            ("o", "sort"),
+            ("/", "filter"),
             ("r", "refresh"),
             ("p", "pause"),
             ("?", "help"),
@@ -82,16 +112,16 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
 
     // Right side: freshness per provider.
     let mut right = Vec::new();
-    for provider in Provider::ALL {
-        let freshness = app.freshness(provider, now);
+    for provider in &app.enabled_providers {
+        let freshness = app.freshness(*provider, now);
         let age = app
-            .provider(provider)
+            .provider(*provider)
             .and_then(|p| p.health.last_scan)
             .map(|t| fmt_age(now.signed_duration_since(t).num_seconds()))
             .unwrap_or_else(|| "-".into());
         right.push(Span::styled(
             format!("{} ", provider.display_name()),
-            Style::default().fg(theme.provider_dim(provider)),
+            Style::default().fg(theme.provider_dim(*provider)),
         ));
         right.push(Span::styled(
             format!("{} {age} ", freshness.label()),

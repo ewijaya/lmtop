@@ -10,12 +10,16 @@ use std::collections::BTreeMap;
 ///   (reported by Claude; zero for providers that do not expose it).
 /// - `output`: all generated tokens, including reasoning tokens.
 /// - `reasoning`: the subset of `output` spent on reasoning, when reported.
+/// - `unattributed`: tokens a source reports only as a grand total with no
+///   input/output split (e.g. the Codex state DB's `tokens_used`). Counted
+///   in totals, never guessed into a direction.
 /// - `other`: unknown token categories preserved for forward compatibility.
 ///
-/// The displayed total is `input + cached_input + cache_creation + output`,
-/// i.e. cached input IS included in totals. `reasoning` is informational and
-/// never added on top of `output`. `other` categories are tracked but not
-/// folded into the total because their semantics are unknown.
+/// The displayed total is `input + cached_input + cache_creation + output +
+/// unattributed`, i.e. cached input IS included in totals. `reasoning` is
+/// informational and never added on top of `output`. `other` categories are
+/// tracked but not folded into the total because their semantics are
+/// unknown.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenCounts {
     pub input: u64,
@@ -23,15 +27,21 @@ pub struct TokenCounts {
     pub cache_creation: u64,
     pub output: u64,
     pub reasoning: u64,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub unattributed: u64,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub other: BTreeMap<String, u64>,
 }
 
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
+}
+
 impl TokenCounts {
     /// Total tokens as displayed: non-cached input + cached input +
-    /// cache-creation input + output.
+    /// cache-creation input + output + unattributed.
     pub fn total(&self) -> u64 {
-        self.input + self.cached_input + self.cache_creation + self.output
+        self.input + self.cached_input + self.cache_creation + self.output + self.unattributed
     }
 
     /// All input-side tokens (non-cached + cached + cache creation).
@@ -49,6 +59,7 @@ impl TokenCounts {
         self.cache_creation += other.cache_creation;
         self.output += other.output;
         self.reasoning += other.reasoning;
+        self.unattributed += other.unattributed;
         for (k, v) in &other.other {
             *self.other.entry(k.clone()).or_insert(0) += v;
         }
@@ -72,6 +83,7 @@ impl TokenCounts {
             cache_creation: newer.cache_creation.saturating_sub(older.cache_creation),
             output: newer.output.saturating_sub(older.output),
             reasoning: newer.reasoning.saturating_sub(older.reasoning),
+            unattributed: newer.unattributed.saturating_sub(older.unattributed),
             other,
         }
     }

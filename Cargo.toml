@@ -34,3 +34,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # on macOS native-tls uses the system Security framework and it is a no-op.
 native-tls = { version = "0.2", features = ["vendored"] }
 ureq = { version = "2.12", default-features = false, features = ["native-tls", "json"] }
+# Read-only access to the Codex CLI state database (newer Codex versions
+# record sessions in SQLite instead of rollout JSONL files). `bundled`
+# compiles SQLite from source so musl releases stay self-contained.
+rusqlite = { version = "0.40.1", features = ["bundled"] }

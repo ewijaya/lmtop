@@ -36,15 +36,30 @@ session_paths = []
 # Same as above, using ~/.claude/.credentials.json.
 network_quota = false
 
+# A user-defined provider (Gemini, Ollama, OpenRouter, …) fed by JSON you
+# produce. See "Custom provider" below for the schema.
+[providers.custom]
+enabled = false
+# Display name used across the UI.
+name = "Custom"
+# EITHER a JSON file lmtop re-reads each refresh…
+#source = "/path/to/usage.json"
+# …OR a command whose stdout is that JSON (ignored when source is set).
+# The command runs via bash each refresh, so keep it fast.
+#command = "my-usage-exporter"
+
 [ui]
 # Seconds between filesystem rescans. Rendering is independent of this.
 refresh_secs = 5
+# Color palette: dark | light | catppuccin | gruvbox | nord.
+# Unknown names fall back to dark. 16-color terminals ignore this.
 theme = "dark"
 # ASCII-only bars/charts for terminals without good unicode support.
 ascii = false
 # Never touch the network (also available as --offline).
 offline = false
-# Redraw once per second instead of 4x/second.
+# Redraw once per second instead of 4x/second, and disable the
+# active-session pulse.
 reduced_motion = false
 
 [time]
@@ -56,22 +71,99 @@ week_start = "monday"
 timezone = "local"
 
 [history]
-# Minutes of token-rate history kept for the chart.
+# Minutes of token-rate history kept for the live chart window.
 retention_minutes = 60
+# Persist rate and quota history across runs (JSONL in the data dir, e.g.
+# ~/.local/share/lmtop/history.jsonl). Powers the pannable history view
+# and the quota timeline. Contains timestamps, token counts, and quota
+# percentages only — never session ids, project names, or content.
+persist = true
+# Days of persisted history kept; older entries are pruned at startup.
+retention_days = 30
+
+[alerts]
+enabled = true
+# Fire once when a window's used percentage crosses each threshold
+# (re-armed when the window resets). Only the highest crossed threshold
+# fires per reading.
+quota_thresholds = [80.0, 95.0]
+# Fire when projected exhaustion is within this many minutes and before
+# the window's reset.
+exhaustion_warn_minutes = 30
+# Ring the terminal bell.
+bell = true
+# Desktop notification via notify-send (Linux) or osascript (macOS),
+# best effort — silently skipped if unavailable.
+desktop = true
+# Optional command run on every alert (via bash) with these env vars:
+# LMTOP_ALERT_TITLE, LMTOP_ALERT_BODY, LMTOP_ALERT_SEVERITY,
+# LMTOP_ALERT_PROVIDER.
+#command = "my-alert-hook"
 ```
 
 Unknown keys are rejected with an error message naming the key, so typos
 fail loudly instead of being silently ignored.
+
+Alerts are evaluated against provider-reported quota only, and only when
+the underlying data is less than an hour old — stale local snapshots never
+alert. Alerts fire from the interactive dashboard, not from `snapshot` or
+`line`.
+
+## Custom provider
+
+`[providers.custom]` wires in any provider lmtop has no built-in collector
+for. Point `source` at a JSON file (or `command` at a program printing the
+same JSON) with this shape — every field optional except session `id`s:
+
+```json
+{
+  "captured_at": "2026-07-17T10:00:00Z",
+  "quota_windows": [
+    {"used_percent": 41.5, "window_minutes": 300,
+     "resets_at": "2026-07-17T14:00:00Z", "scope": null}
+  ],
+  "credits": 12.5,
+  "sessions": [
+    {"id": "abc", "model": "gemini-2.5-pro", "project": "myapp",
+     "started_at": "2026-07-17T08:00:00Z",
+     "last_activity": "2026-07-17T09:59:00Z",
+     "tokens": {"input": 100, "cached_input": 0, "cache_creation": 0,
+                "output": 50, "reasoning": 0},
+     "context_tokens": 40000, "context_window": 1000000}
+  ]
+}
+```
+
+Session token counts are **cumulative**; lmtop computes deltas between
+refreshes (feeding the week aggregate and rate chart) and ignores shrinking
+counters. Quota windows are classified by `window_minutes` (~300 → 5h,
+~10080 → weekly) and get the same burn-trend estimation as the built-in
+providers. Capabilities are inferred from which fields you provide.
 
 ## CLI flags
 
 Flags override the config file:
 
 ```text
---provider codex|claude   monitor one provider only
---offline                 disable all network access
---live                    network_quota = true for all enabled providers
---refresh <secs>          collector refresh interval
---ascii                   ASCII bars and charts
---config <path>           alternate config file
+--provider codex|claude|custom   monitor one provider only
+--offline                        disable all network access
+--live                           network_quota = true for all enabled providers
+--refresh <secs>                 collector refresh interval
+--ascii                          ASCII bars and charts
+--config <path>                  alternate config file
 ```
+
+## Subcommands
+
+```text
+lmtop                 interactive dashboard
+lmtop snapshot        one-shot text summary
+lmtop snapshot --json machine-readable snapshot
+lmtop line            one-line colored summary for status bars
+lmtop line --plain    …without ANSI colors
+lmtop doctor          discovery, parse health, capabilities
+```
+
+`lmtop line` is built for embedding: tmux `status-right`, starship custom
+commands, waybar `custom` modules, or a Claude Code statusline. Colors are
+emitted only when stdout is a terminal (force with `--color`).

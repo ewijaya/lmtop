@@ -128,9 +128,24 @@ lmtop --refresh 5         # rescan every 5 seconds
 lmtop --ascii             # ASCII bars/charts
 lmtop snapshot            # one-shot text summary (non-interactive)
 lmtop snapshot --json     # machine-readable snapshot
+lmtop line                # one-line summary for status bars (tmux, starship…)
 lmtop doctor              # discovery, parse health, capabilities
 lmtop --version
 ```
+
+### Status-bar embedding (`lmtop line`)
+
+`lmtop line` prints a single colored line — per provider, every quota
+window plus the worst outlook marker — and exits:
+
+```text
+Codex wk 42% · Claude 5h 26% wk 13% wk·Fable 19%
+```
+
+Drop it into tmux (`set -g status-right '#(lmtop line --color)'`), a
+starship custom command, a waybar module, or a Claude Code statusline.
+Colors are only emitted when stdout is a terminal unless `--color` forces
+them; `--plain` strips them.
 
 ### Live quota (`--live`)
 
@@ -148,14 +163,65 @@ has the exact contract). `--offline` always wins over `--live`.
 ## Keyboard shortcuts
 
 ```text
-1        Codex view              w      Focus weekly usage
-2        Claude view             h      Focus history chart
-3        Combined view           j/k ↓↑ Scroll sessions
-Tab      Change focused panel    r      Refresh now
-s        Focus sessions          p      Pause / resume collectors
-m        Focus model breakdown   ?      Help
-                                 q/Esc  Quit
+1        Codex view              j/k ↓↑ Move session cursor
+2        Claude view             Enter  Session detail overlay
+3        Combined view           o / O  Cycle / reverse session sort
+4        Planner view            /      Filter sessions (Esc clears)
+Tab      Change focused panel    v      Rate ⇄ quota timeline chart
+s        Focus sessions          ←/→    Pan chart back through history
+m        Focus model breakdown   +/-    Zoom chart window
+w        Focus weekly usage      0      Back to the live edge
+h        Focus history chart     r      Refresh now
+p        Pause collectors        ?      Help
+q        Quit                    Esc    Close / clear / quit
 ```
+
+The mouse works too: click to focus a panel, click a session to select it
+(again to open its detail), click the table header to change sort, and
+scroll to move through sessions or pan the chart.
+
+## Planner view (key 4)
+
+The planner answers "will it last?" head-on: for every quota window it
+races **capacity used** against **time elapsed**, shows the current burn
+rate next to the *sustainable* burn rate (what you could spend per hour
+and still make the reset), projects the percentage you'll reach at reset,
+and plots a 6-hour quota trend sparkline — plus calendar-week pacing from
+observed tokens (clearly labeled, never conflated with quota).
+
+## History & the quota sawtooth
+
+With persistence on (the default), lmtop records per-minute token rates
+and every quota change to `~/.local/share/lmtop/history.jsonl` (30 days,
+pruned automatically). The chart panel can then pan (`←/→`) and zoom
+(`+/-`) back through past days, and `v` switches it to the **quota
+timeline** — the drain-and-reset sawtooth of each window over time.
+History accumulates while lmtop runs; sessions parsed from provider logs
+also backfill the rate history.
+
+## Alerts
+
+lmtop rings the terminal bell and sends a desktop notification when a
+quota window crosses 80% / 95%, or when projected exhaustion lands within
+30 minutes *before* the window resets. Thresholds, channels, and an
+arbitrary command hook are configurable (`[alerts]` in the config); each
+alert fires once per window occurrence and re-arms after the reset. Alerts
+are never raised from data older than an hour.
+
+## Themes
+
+`theme = "dark" | "light" | "catppuccin" | "gruvbox" | "nord"` in the
+config. Truecolor terminals get the full palette (including continuous
+green→amber→red gauge blending); 16-color terminals fall back to ANSI.
+
+## Custom providers
+
+Any provider lmtop has no built-in collector for — Gemini, Ollama,
+OpenRouter, an internal gateway — can be wired in through
+`[providers.custom]`: point it at a JSON file or a command emitting a
+small documented schema (sessions with cumulative token counters, quota
+windows, credits), and it gets the full treatment: panels, sessions,
+week aggregation, burn trends. See `docs/configuration.md`.
 
 ## Flat-rate subscription limitations
 
@@ -166,6 +232,11 @@ Honesty section — read this before trusting any number:
   but only as fresh as your last Codex activity on this machine; if you
   haven't used Codex for hours, the quota shown is hours old (freshness is
   displayed). Use `--live` for current numbers.
+- **Newer Codex CLIs (≥ ~0.144) are migrating storage** from rollout JSONL
+  files to a SQLite state database. lmtop reads both: sessions found only
+  in the state DB appear with their token totals as *unattributed* (the DB
+  has no input/output split) and carry no rate-limit snapshots — the
+  health line says so, and `--live` covers quota.
 - **Claude quota** (without `--live`) comes from Claude Code's own cached
   quota view in `~/.claude.json`, refreshed only while Claude Code itself
   is running — same staleness caveat as above, and the age is displayed.

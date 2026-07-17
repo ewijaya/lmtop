@@ -8,11 +8,11 @@ pub const NARROW_WIDTH: u16 = 80;
 pub const MIN_WIDTH: u16 = 30;
 pub const MIN_HEIGHT: u16 = 10;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct CombinedLayout {
     pub header: Rect,
-    pub codex_panel: Rect,
-    pub claude_panel: Rect,
+    /// One panel per enabled provider, in display order.
+    pub providers: Vec<Rect>,
     pub rate_chart: Rect,
     pub sessions: Rect,
     pub weekly: Rect,
@@ -26,7 +26,8 @@ pub fn too_small(area: Rect) -> bool {
     area.width < MIN_WIDTH || area.height < MIN_HEIGHT
 }
 
-pub fn combined(area: Rect) -> CombinedLayout {
+pub fn combined(area: Rect, provider_count: usize) -> CombinedLayout {
+    let provider_count = provider_count.clamp(1, 4);
     let narrow = area.width < NARROW_WIDTH;
     let short = area.height < 32;
     let panel_h = if short { 7 } else { 9 };
@@ -34,28 +35,32 @@ pub fn combined(area: Rect) -> CombinedLayout {
     let bottom_h = if short { 7 } else { 9 };
 
     if narrow {
-        let rows = Layout::vertical([
-            Constraint::Length(1),
+        // Providers stack vertically, one region each.
+        let mut constraints = vec![Constraint::Length(1)];
+        constraints.extend(std::iter::repeat_n(
             Constraint::Length(panel_h),
-            Constraint::Length(panel_h),
+            provider_count,
+        ));
+        constraints.extend([
             Constraint::Length(chart_h),
             Constraint::Min(5),
             Constraint::Length(bottom_h),
             Constraint::Length(1),
-        ])
-        .split(area);
+        ]);
+        let rows = Layout::vertical(constraints).split(area);
+        let providers: Vec<Rect> = (0..provider_count).map(|i| rows[1 + i]).collect();
+        let base = 1 + provider_count;
         // In narrow mode weekly and breakdown share one region split in two.
         let bottom = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(rows[5]);
+            .split(rows[base + 2]);
         CombinedLayout {
             header: rows[0],
-            codex_panel: rows[1],
-            claude_panel: rows[2],
-            rate_chart: rows[3],
-            sessions: rows[4],
+            providers,
+            rate_chart: rows[base],
+            sessions: rows[base + 1],
             weekly: bottom[0],
             breakdown: bottom[1],
-            footer: rows[6],
+            footer: rows[base + 3],
             narrow,
         }
     } else {
@@ -68,15 +73,22 @@ pub fn combined(area: Rect) -> CombinedLayout {
             Constraint::Length(1),
         ])
         .split(area);
-        let providers =
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(rows[1]);
+        let share = (100 / provider_count as u16).max(1);
+        let provider_cols: Vec<Constraint> = (0..provider_count)
+            .map(|i| {
+                if i == provider_count - 1 {
+                    Constraint::Min(10) // absorb rounding
+                } else {
+                    Constraint::Percentage(share)
+                }
+            })
+            .collect();
+        let providers = Layout::horizontal(provider_cols).split(rows[1]).to_vec();
         let bottom = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(rows[4]);
         CombinedLayout {
             header: rows[0],
-            codex_panel: providers[0],
-            claude_panel: providers[1],
+            providers,
             rate_chart: rows[2],
             sessions: rows[3],
             weekly: bottom[0],
@@ -129,7 +141,32 @@ pub fn provider(area: Rect) -> ProviderLayout {
     }
 }
 
-/// Centered rectangle used by the help overlay.
+#[derive(Debug, Clone)]
+pub struct PlannerLayout {
+    pub header: Rect,
+    /// One planner section per enabled provider, stacked vertically.
+    pub providers: Vec<Rect>,
+    pub footer: Rect,
+}
+
+/// Layout for the planner view (key 4): full-height provider sections.
+pub fn planner(area: Rect, provider_count: usize) -> PlannerLayout {
+    let provider_count = provider_count.clamp(1, 4);
+    let mut constraints = vec![Constraint::Length(1)];
+    constraints.extend(std::iter::repeat_n(
+        Constraint::Ratio(1, provider_count as u32),
+        provider_count,
+    ));
+    constraints.push(Constraint::Length(1));
+    let rows = Layout::vertical(constraints).split(area);
+    PlannerLayout {
+        header: rows[0],
+        providers: (0..provider_count).map(|i| rows[1 + i]).collect(),
+        footer: rows[provider_count + 1],
+    }
+}
+
+/// Centered rectangle used by overlays.
 pub fn centered(area: Rect, width: u16, height: u16) -> Rect {
     let w = width.min(area.width);
     let h = height.min(area.height);
@@ -147,38 +184,58 @@ mod tests {
 
     #[test]
     fn wide_layout_puts_providers_side_by_side() {
-        let l = combined(Rect::new(0, 0, 120, 40));
+        let l = combined(Rect::new(0, 0, 120, 40), 2);
         assert!(!l.narrow);
-        assert_eq!(l.codex_panel.y, l.claude_panel.y);
-        assert!(l.claude_panel.x > l.codex_panel.x);
+        assert_eq!(l.providers.len(), 2);
+        assert_eq!(l.providers[0].y, l.providers[1].y);
+        assert!(l.providers[1].x > l.providers[0].x);
     }
 
     #[test]
     fn narrow_layout_stacks_providers() {
-        let l = combined(Rect::new(0, 0, 60, 40));
+        let l = combined(Rect::new(0, 0, 60, 40), 2);
         assert!(l.narrow);
-        assert_eq!(l.codex_panel.x, l.claude_panel.x);
-        assert!(l.claude_panel.y > l.codex_panel.y);
+        assert_eq!(l.providers[0].x, l.providers[1].x);
+        assert!(l.providers[1].y > l.providers[0].y);
+    }
+
+    #[test]
+    fn three_providers_fit() {
+        let l = combined(Rect::new(0, 0, 150, 40), 3);
+        assert_eq!(l.providers.len(), 3);
+        assert!(l.providers.iter().all(|r| r.width >= 10));
+        let l = combined(Rect::new(0, 0, 60, 50), 3);
+        assert_eq!(l.providers.len(), 3);
     }
 
     #[test]
     fn layouts_fit_within_area() {
         for (w, h) in [(30u16, 12u16), (60, 24), (100, 30), (200, 60)] {
-            let area = Rect::new(0, 0, w, h);
-            let l = combined(area);
-            for r in [
-                l.header,
-                l.codex_panel,
-                l.claude_panel,
-                l.rate_chart,
-                l.sessions,
-                l.weekly,
-                l.breakdown,
-                l.footer,
-            ] {
-                assert!(r.right() <= area.right() && r.bottom() <= area.bottom());
+            for n in 1..=3 {
+                let area = Rect::new(0, 0, w, h);
+                let l = combined(area, n);
+                let mut rects = vec![
+                    l.header,
+                    l.rate_chart,
+                    l.sessions,
+                    l.weekly,
+                    l.breakdown,
+                    l.footer,
+                ];
+                rects.extend(l.providers.iter().copied());
+                for r in rects {
+                    assert!(r.right() <= area.right() && r.bottom() <= area.bottom());
+                }
             }
         }
+    }
+
+    #[test]
+    fn planner_sections_stack() {
+        let l = planner(Rect::new(0, 0, 100, 40), 2);
+        assert_eq!(l.providers.len(), 2);
+        assert!(l.providers[1].y > l.providers[0].y);
+        assert!(l.footer.y >= l.providers[1].bottom());
     }
 
     #[test]

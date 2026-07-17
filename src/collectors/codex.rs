@@ -42,6 +42,12 @@ const QUOTA_SAMPLE_RETENTION_HOURS: i64 = 7 * 24;
 pub struct CodexCollector {
     codex_home: Option<PathBuf>,
     session_dirs: Vec<PathBuf>,
+    /// Codex state database (newer CLIs record sessions here instead of —
+    /// or before — rollout files). Secondary source: rollout-owned
+    /// sessions are never double counted.
+    state_db: Option<PathBuf>,
+    /// Cumulative `tokens_used` per DB thread as of the previous scan.
+    db_last_totals: HashMap<String, u64>,
     tail: JsonlTail,
     store: UsageStore,
     files: HashMap<PathBuf, FileState>,
@@ -91,9 +97,14 @@ impl CodexCollector {
             defaults.push(home.join("archived_sessions"));
         }
         let session_dirs = super::existing_dirs(&defaults, &cfg.session_paths);
+        let state_db = codex_home
+            .as_ref()
+            .and_then(|h| super::codex_db::find_state_db(h));
         CodexCollector {
             codex_home,
             session_dirs,
+            state_db,
+            db_last_totals: HashMap::new(),
             tail: JsonlTail::new(),
             store: UsageStore::new(Provider::Codex),
             files: HashMap::new(),
@@ -113,6 +124,7 @@ impl CodexCollector {
         let mut collector = Self::from_config(&ProviderConfig::default());
         collector.codex_home = None;
         collector.session_dirs = session_dirs.into_iter().filter(|p| p.is_dir()).collect();
+        collector.state_db = None;
         collector.live = None;
         collector
     }
@@ -353,6 +365,63 @@ impl CodexCollector {
         }
     }
 
+    /// Merge sessions from the Codex state database. Rollout files stay
+    /// the primary source (they carry timestamps, splits, and rate
+    /// limits); DB threads fill in sessions that have no rollout file —
+    /// the storage newer Codex CLIs use. A DB thread's cumulative
+    /// `tokens_used` has no input/output split, so deltas land in
+    /// `TokenCounts::unattributed`; the first observation is attributed to
+    /// the thread's last update time. Returns a health note when the DB is
+    /// carrying sessions the rollout files don't have.
+    fn ingest_state_db(&mut self, ctx: &ScanContext) -> Option<String> {
+        let db_path = self.state_db.as_ref()?;
+        let lookback = ctx.now - chrono::Duration::hours(super::SESSION_LOOKBACK_HOURS);
+        let rows = super::codex_db::threads_since(db_path, lookback)?;
+        let mut db_only = 0usize;
+        for row in rows {
+            if self.session_owner.contains_key(&row.id) {
+                continue; // rollout file owns this session
+            }
+            db_only += 1;
+            let prev = self.db_last_totals.get(&row.id).copied().unwrap_or(0);
+            let delta = row.tokens_used.saturating_sub(prev);
+            self.db_last_totals.insert(row.id.clone(), row.tokens_used);
+            let model = row.model.as_deref().map(ModelIdentity::normalize);
+            {
+                let record = self.store.session_mut(&row.id);
+                if record.project.is_none() {
+                    record.project = row.cwd.as_deref().and_then(project_name);
+                }
+                if record.started_at.is_none() {
+                    record.started_at = row.created_at;
+                }
+                if let Some(t) = row.updated_at
+                    && record.last_activity.is_none_or(|prev| t > prev)
+                {
+                    record.last_activity = Some(t);
+                }
+                if model.is_some() {
+                    record.last_model = model.clone();
+                }
+            }
+            if delta > 0 {
+                let at = row.updated_at.unwrap_or(ctx.now).min(ctx.now);
+                self.store.record_event(
+                    &row.id,
+                    at,
+                    model,
+                    TokenCounts {
+                        unattributed: delta,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        (db_only > 0 && self.files_scanned == 0).then(|| {
+            "sessions from Codex state DB (no rollout files) — quota needs --live".to_string()
+        })
+    }
+
     fn build_quota_windows(&mut self, ctx: &ScanContext) -> Vec<QuotaWindow> {
         let cutoff = ctx.now - chrono::Duration::hours(QUOTA_SAMPLE_RETENTION_HOURS);
         for samples in self.quota_samples.values_mut() {
@@ -393,12 +462,12 @@ impl Collector for CodexCollector {
     }
 
     fn scan(&mut self, ctx: &ScanContext) -> ProviderSnapshot {
-        // Without session logs there is nothing to observe locally — but the
-        // opt-in live quota fetch can still report account state.
-        if self.session_dirs.is_empty() && self.live.is_none() {
+        // Without session logs, a state DB, or live quota there is nothing
+        // to observe.
+        if self.session_dirs.is_empty() && self.state_db.is_none() && self.live.is_none() {
             return ProviderSnapshot::empty(
                 Provider::Codex,
-                CollectorHealth::unavailable("no Codex session directory found"),
+                CollectorHealth::unavailable("no Codex session directory or state database found"),
             );
         }
 
@@ -428,6 +497,7 @@ impl Collector for CodexCollector {
                 }
             }
         }
+        let db_note = self.ingest_state_db(ctx);
         self.store.trim(ctx);
 
         // Live quota, when enabled: each fresh response is normalized into
@@ -440,6 +510,9 @@ impl Collector for CodexCollector {
 
         let quota_windows = self.build_quota_windows(ctx);
         let mut problems = Vec::new();
+        if let Some(note) = db_note {
+            problems.push(note);
+        }
         if self.parse_errors > 0 {
             problems.push(format!("{} unparsable lines skipped", self.parse_errors));
         }
@@ -497,6 +570,7 @@ fn parse_codex_usage(usage: &Value) -> TokenCounts {
         cache_creation: 0,
         output: read_u64(usage, "output_tokens"),
         reasoning: read_u64(usage, "reasoning_output_tokens"),
+        unattributed: 0,
         other,
     }
 }

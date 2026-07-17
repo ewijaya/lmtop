@@ -20,21 +20,37 @@ pub use tokens::TokenCounts;
 
 use serde::{Deserialize, Serialize};
 
-/// An AI coding agent product whose usage we monitor.
+/// An AI coding agent product whose usage we monitor. `Custom` is a
+/// user-defined provider fed by the external-source collector (a JSON file
+/// or command configured in `[providers.custom]`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     Codex,
     Claude,
+    Custom,
+}
+
+/// Display label for the custom provider, set once at startup from the
+/// config (`providers.custom.name`). Leaked so `display_name` can stay
+/// `&'static str` everywhere.
+static CUSTOM_LABEL: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+pub fn set_custom_provider_label(name: &str) {
+    let name = name.trim();
+    if !name.is_empty() {
+        let _ = CUSTOM_LABEL.set(Box::leak(name.to_string().into_boxed_str()));
+    }
 }
 
 impl Provider {
-    pub const ALL: [Provider; 2] = [Provider::Codex, Provider::Claude];
+    pub const ALL: [Provider; 3] = [Provider::Codex, Provider::Claude, Provider::Custom];
 
     pub fn display_name(self) -> &'static str {
         match self {
             Provider::Codex => "Codex",
             Provider::Claude => "Claude",
+            Provider::Custom => CUSTOM_LABEL.get().copied().unwrap_or("Custom"),
         }
     }
 }
@@ -52,6 +68,7 @@ impl std::str::FromStr for Provider {
         match s.to_ascii_lowercase().as_str() {
             "codex" => Ok(Provider::Codex),
             "claude" => Ok(Provider::Claude),
+            "custom" => Ok(Provider::Custom),
             other => Err(format!("unknown provider: {other}")),
         }
     }

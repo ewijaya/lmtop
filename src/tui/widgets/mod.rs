@@ -1,15 +1,19 @@
 mod breakdown;
 mod header;
 mod help;
+mod planner;
 mod provider_panel;
 mod rate_chart;
-mod sessions;
+mod session_detail;
+pub mod sessions;
 
 pub use breakdown::{render_breakdown, render_weekly};
 pub use header::{render_footer, render_header};
 pub use help::render_help;
+pub use planner::render_planner;
 pub use provider_panel::render_provider_panel;
-pub use rate_chart::render_rate_chart;
+pub use rate_chart::render_chart;
+pub use session_detail::render_session_detail;
 pub use sessions::render_sessions;
 
 /// Build a textual usage bar of `width` cells for a 0..=100 percentage.

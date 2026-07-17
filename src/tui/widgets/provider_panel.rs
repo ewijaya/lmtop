@@ -45,6 +45,16 @@ fn outlook_span<'a>(w: &QuotaWindow, theme: &Theme, now: chrono::DateTime<Utc>) 
     }
 }
 
+/// Pad a row label to `width`, always leaving at least one separating
+/// space when the label is longer (e.g. "Weekly (Fable)").
+pub(super) fn pad_label(label: &str, width: usize) -> String {
+    let mut s = format!("{label:<width$}");
+    if !s.ends_with(' ') {
+        s.push(' ');
+    }
+    s
+}
+
 /// Compact confidence marker for a projection, e.g. "·med". Estimates are
 /// always labeled with how much the trend can be trusted.
 fn confidence_suffix(w: &QuotaWindow) -> String {
@@ -55,13 +65,15 @@ fn confidence_suffix(w: &QuotaWindow) -> String {
 }
 
 /// Quota + token summary panel for one provider. `detailed` adds capability
-/// and health lines (used by the single-provider views).
+/// and health lines (used by the single-provider views). `history` supplies
+/// the persisted quota samples behind the per-window trend sparkline.
 #[allow(clippy::too_many_arguments)]
 pub fn render_provider_panel(
     frame: &mut Frame,
     area: Rect,
     provider: Provider,
     snapshot: Option<&ProviderSnapshot>,
+    history: Option<&crate::persist::HistoryStore>,
     theme: &Theme,
     now: DateTime<Utc>,
     focused: bool,
@@ -143,7 +155,7 @@ pub fn render_provider_panel(
                 reset
             };
             let mut spans = vec![
-                Span::styled(format!("{:<8}", w.label()), theme.text()),
+                Span::styled(pad_label(&w.label(), 8), theme.text()),
                 Span::styled(
                     bar(bar_width, pct, theme.ascii),
                     Style::default().fg(theme.gauge_color(pct)),
@@ -159,6 +171,25 @@ pub fn render_provider_panel(
                     format!(" @{}", crate::tui::theme::fmt_age(age_secs)),
                     theme.dim(),
                 ));
+            }
+            // Trend sparkline over the last three hours of persisted
+            // samples, when there is room and data.
+            if inner.width > 70
+                && let Some(history) = history
+            {
+                let points: Vec<f64> = history
+                    .quota_series(provider, now - chrono::Duration::hours(3), now)
+                    .into_iter()
+                    .filter(|q| q.kind == w.kind && q.scope == w.scope)
+                    .map(|q| q.used_percent)
+                    .collect();
+                if let Some(spark) = crate::tui::theme::sparkline(&points, 8, theme.ascii) {
+                    spans.push(Span::styled(" ", theme.dim()));
+                    spans.push(Span::styled(
+                        spark,
+                        Style::default().fg(theme.provider_dim(provider)),
+                    ));
+                }
             }
             lines.push(Line::from(spans));
         }

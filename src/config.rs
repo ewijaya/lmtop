@@ -13,6 +13,7 @@ pub struct Config {
     pub ui: UiConfig,
     pub time: TimeConfig,
     pub history: HistoryConfig,
+    pub alerts: AlertsConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -20,6 +21,68 @@ pub struct Config {
 pub struct ProvidersConfig {
     pub codex: ProviderConfig,
     pub claude: ProviderConfig,
+    /// A user-defined provider fed by an external JSON source; see
+    /// `docs/configuration.md` for the schema.
+    pub custom: CustomProviderConfig,
+}
+
+/// A provider lmtop has no built-in collector for (Gemini, Ollama,
+/// OpenRouter, …), fed by a JSON file or command output conforming to the
+/// documented external-provider schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CustomProviderConfig {
+    /// Off by default; enabling requires a `source` or `command`.
+    pub enabled: bool,
+    /// Display name shown in the UI (panel titles, session rows).
+    pub name: String,
+    /// Path to a JSON file conforming to the external-provider schema.
+    pub source: Option<PathBuf>,
+    /// Command executed each refresh; must print the schema JSON on stdout.
+    /// Ignored when `source` is set.
+    pub command: Option<String>,
+}
+
+impl Default for CustomProviderConfig {
+    fn default() -> Self {
+        CustomProviderConfig {
+            enabled: false,
+            name: "Custom".into(),
+            source: None,
+            command: None,
+        }
+    }
+}
+
+/// Quota alert thresholds and delivery channels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AlertsConfig {
+    pub enabled: bool,
+    /// Fire when a window's used percentage crosses each threshold.
+    pub quota_thresholds: Vec<f64>,
+    /// Fire when projected exhaustion is within this many minutes and
+    /// before the window's reset.
+    pub exhaustion_warn_minutes: u64,
+    /// Ring the terminal bell.
+    pub bell: bool,
+    /// Send a desktop notification (notify-send / osascript), best effort.
+    pub desktop: bool,
+    /// Optional command run on every alert with LMTOP_ALERT_* env vars set.
+    pub command: Option<String>,
+}
+
+impl Default for AlertsConfig {
+    fn default() -> Self {
+        AlertsConfig {
+            enabled: true,
+            quota_thresholds: vec![80.0, 95.0],
+            exhaustion_warn_minutes: 30,
+            bell: true,
+            desktop: true,
+            command: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,14 +178,21 @@ impl TimeConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HistoryConfig {
-    /// Minutes of token-rate history kept for the chart.
+    /// Minutes of token-rate history kept for the live chart window.
     pub retention_minutes: u64,
+    /// Persist rate and quota history across runs (JSONL in the data dir),
+    /// powering the history review mode and quota timeline.
+    pub persist: bool,
+    /// Days of persisted history kept; older entries are pruned at startup.
+    pub retention_days: u64,
 }
 
 impl Default for HistoryConfig {
     fn default() -> Self {
         HistoryConfig {
             retention_minutes: 60,
+            persist: true,
+            retention_days: 30,
         }
     }
 }

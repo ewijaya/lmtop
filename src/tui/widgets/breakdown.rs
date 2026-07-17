@@ -72,9 +72,14 @@ pub fn render_weekly(
             ),
             Span::styled(format!("({} sessions)", week.sessions), theme.dim()),
         ]));
+        let unattr = if week.tokens.unattributed > 0 {
+            format!("  unattr {}", fmt_tokens(week.tokens.unattributed))
+        } else {
+            String::new()
+        };
         lines.push(Line::from(Span::styled(
             format!(
-                "  in {}  cached {}  cachew {}  out {}",
+                "  in {}  cached {}  cachew {}  out {}{unattr}",
                 fmt_tokens(week.tokens.input),
                 fmt_tokens(week.tokens.cached_input),
                 fmt_tokens(week.tokens.cache_creation),

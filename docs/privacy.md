@@ -11,6 +11,8 @@ anything else.
 | Codex CLI session logs (`~/.codex/sessions/`) | session id, timestamps, working-directory basename, model ids, token counters, provider rate-limit percentages | prompt text, model output, tool calls, instructions |
 | Claude Code session logs (`~/.claude/projects/`) | session id, timestamps, working-directory basename, model ids, per-request token usage | message content, tool output, attachments |
 | Claude Code quota cache (`~/.claude.json` → `cachedUsageUtilization` only) | quota percentages, reset times, model-scoped limit percentages, fetch time | every other key in the file — account ids, OAuth metadata, machine ids, feature flags |
+| Codex state database (`~/.codex/state_N.sqlite`, `threads` table, read-only) | thread id, timestamps, working-directory basename, model id, cumulative token total | thread titles, first user messages, previews, git metadata, every other column and table |
+| Custom provider source (only if you configure one) | the JSON you point it at | — |
 
 Session files are parsed line by line for the specific metadata fields
 above. Prompt bodies, assistant output, and tool results are present in
@@ -51,8 +53,12 @@ Disabled by default. When you enable it, and only then:
 - **No API keys.** Core functionality never asks for one.
 - **No telemetry.** Nothing leaves your machine.
 - **No transcript copies.** Raw session files are never copied into any
-  application database or cache. Only normalized usage numbers live in
-  memory, and they are not persisted in the MVP.
+  application database or cache. The one thing lmtop persists (unless
+  `history.persist = false`) is its own history file
+  (`~/.local/share/lmtop/history.jsonl` or platform equivalent):
+  per-minute token totals and quota percentages with provider names and
+  timestamps — no session ids, no project names, no content. It never
+  leaves your machine and is pruned after `history.retention_days`.
 - **No prompt content in errors.** Parse failures are counted, not quoted.
   Diagnostics replace the home directory with `~` and never include file
   contents.

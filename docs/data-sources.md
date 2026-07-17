@@ -81,6 +81,25 @@ Semantics the collector depends on (verified empirically):
 - The `codex app-server` JSON-RPC interface could provide push-based
   account usage; not used in the MVP to stay read-only and process-free.
 
+### Codex state database (`~/.codex/state_N.sqlite`)
+
+Newer Codex CLIs (observed with 0.144.x) run an in-process app-server and
+record sessions as rows in a `threads` table — sometimes without writing a
+rollout file at all. lmtop opens the highest-numbered `state_N.sqlite`
+read-only (100 ms busy timeout, never blocking the CLI's writes) and reads
+per thread: `id`, `cwd` (basename only, for the project column), `model`,
+cumulative `tokens_used`, `created_at`, `updated_at`. Sessions already
+owned by a rollout file are skipped, so nothing is double counted.
+
+Limits of this source, surfaced rather than papered over: `tokens_used`
+is a single total with no input/cached/output split (deltas are recorded
+as *unattributed* tokens, which count toward totals but never pretend to
+have a direction), and the table carries no rate-limit snapshots — quota
+freshness still depends on rollout files or `--live`.
+
+`logs_N.sqlite` (tracing output) is not read: it contains log text, not
+usage data.
+
 ## Claude Code
 
 **Location:** `~/.claude/projects/<project-slug>/<session-uuid>.jsonl`,

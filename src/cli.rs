@@ -1,7 +1,10 @@
 //! CLI entry: argument parsing and the snapshot/doctor/TUI commands.
 
 use crate::app::{App, View};
-use crate::collectors::{Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector};
+use crate::collectors::{
+    Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector,
+    custom::CustomCollector,
+};
 use crate::config::Config;
 use crate::domain::{Provider, UsageSnapshot};
 use chrono::Utc;
@@ -56,6 +59,17 @@ enum Command {
     },
     /// Check provider discovery, parse health, and configuration.
     Doctor,
+    /// Print a one-line usage summary for status bars (tmux, starship,
+    /// waybar, Claude Code statusline) and exit.
+    Line {
+        /// Plain text without ANSI colors (also implied when stdout is not
+        /// a terminal, unless --color is given).
+        #[arg(long, conflicts_with = "color")]
+        plain: bool,
+        /// Force ANSI colors even when stdout is not a terminal.
+        #[arg(long)]
+        color: bool,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -63,6 +77,7 @@ pub fn run() -> Result<()> {
     init_tracing();
     let cli = Cli::parse();
     let (mut cfg, config_path) = Config::load(cli.config.as_deref())?;
+    crate::domain::set_custom_provider_label(&cfg.providers.custom.name);
 
     // CLI flags override config.
     if let Some(refresh) = cli.refresh {
@@ -86,11 +101,13 @@ pub fn run() -> Result<()> {
     if let Some(provider) = cli.provider {
         cfg.providers.codex.enabled &= provider == Provider::Codex;
         cfg.providers.claude.enabled &= provider == Provider::Claude;
+        cfg.providers.custom.enabled &= provider == Provider::Custom;
     }
 
     match cli.command {
         Some(Command::Snapshot { json }) => snapshot_cmd(&cfg, json),
         Some(Command::Doctor) => doctor_cmd(&cfg, config_path),
+        Some(Command::Line { plain, color }) => line_cmd(&cfg, plain, color),
         None => tui_cmd(cfg, cli.provider),
     }
 }
@@ -126,6 +143,11 @@ fn build_collectors(cfg: &Config) -> Vec<Box<dyn Collector>> {
     if cfg.providers.claude.enabled {
         collectors.push(Box::new(ClaudeCollector::from_config(
             &cfg.providers.claude,
+        )));
+    }
+    if cfg.providers.custom.enabled {
+        collectors.push(Box::new(CustomCollector::from_config(
+            &cfg.providers.custom,
         )));
     }
     collectors
@@ -305,6 +327,94 @@ fn render_snapshot_text(snapshot: &UsageSnapshot) -> String {
     out
 }
 
+fn line_cmd(cfg: &Config, plain: bool, force_color: bool) -> Result<()> {
+    use std::io::IsTerminal;
+    let snapshot = collect_once(cfg);
+    let color = !plain && (force_color || std::io::stdout().is_terminal());
+    println!("{}", render_line(&snapshot, color, Utc::now()));
+    Ok(())
+}
+
+/// One-line summary for status bars: per provider, every quota window plus
+/// the worst outlook marker. Designed to stay useful uncolored.
+fn render_line(snapshot: &UsageSnapshot, color: bool, now: chrono::DateTime<Utc>) -> String {
+    use crate::domain::QuotaOutlook;
+    const RESET: &str = "\x1b[0m";
+    const DIM: &str = "\x1b[2m";
+    let pct_color = |pct: f64| -> &'static str {
+        if pct >= 90.0 {
+            "\x1b[31m"
+        } else if pct >= 70.0 {
+            "\x1b[33m"
+        } else {
+            "\x1b[32m"
+        }
+    };
+    let provider_color = |p: Provider| -> &'static str {
+        match p {
+            Provider::Codex => "\x1b[38;5;75m",
+            Provider::Claude => "\x1b[38;5;208m",
+            Provider::Custom => "\x1b[38;5;79m",
+        }
+    };
+    let paint = |code: &str, text: &str| -> String {
+        if color {
+            format!("{code}{text}{RESET}")
+        } else {
+            text.to_string()
+        }
+    };
+
+    let mut parts: Vec<String> = Vec::new();
+    for (provider, snap) in &snapshot.providers {
+        let mut fields = vec![paint(provider_color(*provider), provider.display_name())];
+        if snap.quota_windows.is_empty() {
+            fields.push(paint(DIM, "n/a"));
+        }
+        let mut worst: Option<String> = None;
+        for w in &snap.quota_windows {
+            let label = match (&w.kind, &w.scope) {
+                (crate::domain::QuotaWindowKind::FiveHour, _) => "5h".to_string(),
+                (crate::domain::QuotaWindowKind::Weekly, None) => "wk".to_string(),
+                (crate::domain::QuotaWindowKind::Weekly, Some(s)) => format!("wk·{s}"),
+                _ => w.label(),
+            };
+            if w.is_expired(now) {
+                fields.push(format!("{label} {}", paint(DIM, "stale")));
+                continue;
+            }
+            fields.push(format!(
+                "{label} {}",
+                paint(pct_color(w.used_percent), &format!("{:.0}%", w.used_percent))
+            ));
+            match w.outlook() {
+                QuotaOutlook::Exhausted => {
+                    worst = Some(paint("\x1b[31m", "✗ exhausted"));
+                }
+                QuotaOutlook::AtRisk {
+                    projected_exhaustion,
+                } if worst.is_none() => {
+                    let eta = crate::tui::theme::fmt_duration_until(
+                        projected_exhaustion
+                            .signed_duration_since(now)
+                            .num_seconds(),
+                    );
+                    worst = Some(paint("\x1b[33m", &format!("⚠ ~{eta}")));
+                }
+                _ => {}
+            }
+        }
+        if let Some(w) = worst {
+            fields.push(w);
+        }
+        parts.push(fields.join(" "));
+    }
+    if parts.is_empty() {
+        return "no providers enabled".to_string();
+    }
+    parts.join(&paint(DIM, " · "))
+}
+
 fn doctor_cmd(cfg: &Config, config_path: Option<PathBuf>) -> Result<()> {
     let now = Utc::now();
     let ctx = scan_context(cfg, now);
@@ -325,6 +435,17 @@ fn doctor_cmd(cfg: &Config, config_path: Option<PathBuf>) -> Result<()> {
         cfg.providers.claude.enabled,
         &claude_snapshot,
     ));
+
+    // The custom provider only appears in doctor when actually configured.
+    if cfg.providers.custom.source.is_some() || cfg.providers.custom.command.is_some() {
+        let mut custom = CustomCollector::from_config(&cfg.providers.custom);
+        let custom_snapshot = custom.scan(&ctx);
+        providers.push(crate::diagnostics::ProviderDoctor::from_snapshot(
+            custom.discovery_info(),
+            cfg.providers.custom.enabled,
+            &custom_snapshot,
+        ));
+    }
 
     let report = crate::diagnostics::DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -380,14 +501,31 @@ fn tui_cmd(cfg: Config, provider_filter: Option<Provider>) -> Result<()> {
     }
     drop(tx);
 
-    let theme = crate::tui::theme::Theme::new(cfg.ui.ascii);
-    let mut app = App::new(Utc::now(), cfg.ui.refresh_secs);
+    let theme = crate::tui::theme::Theme::named(cfg.ui.ascii, &cfg.ui.theme);
+    let now = Utc::now();
+    let mut app = App::new(now, cfg.ui.refresh_secs);
     app.view = match provider_filter {
         Some(Provider::Codex) => View::Codex,
         Some(Provider::Claude) => View::Claude,
-        None => View::Combined,
+        Some(Provider::Custom) | None => View::Combined,
     };
-    let result = crate::tui::run(app, theme, rx, control, cfg.ui.reduced_motion);
+    app.reduced_motion = cfg.ui.reduced_motion;
+    app.enabled_providers = Provider::ALL
+        .iter()
+        .copied()
+        .filter(|p| match p {
+            Provider::Codex => cfg.providers.codex.enabled,
+            Provider::Claude => cfg.providers.claude.enabled,
+            Provider::Custom => cfg.providers.custom.enabled,
+        })
+        .collect();
+    if cfg.history.persist
+        && let Some(path) = crate::persist::HistoryStore::default_path()
+    {
+        app.history = crate::persist::HistoryStore::open(path, cfg.history.retention_days, now);
+    }
+    let alert_engine = crate::alerts::AlertEngine::new(cfg.alerts.clone());
+    let result = crate::tui::run(app, theme, rx, control, alert_engine);
     runtime.shutdown_background();
     result
 }
