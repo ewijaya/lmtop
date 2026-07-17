@@ -100,17 +100,8 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             ("q", "quit"),
         ]
     };
-    let mut spans = Vec::new();
-    for (key, label) in keys {
-        spans.push(Span::styled(
-            format!(" {key} "),
-            theme.title().add_modifier(Modifier::REVERSED),
-        ));
-        spans.push(Span::styled(format!("{label} "), theme.dim()));
-    }
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
-
-    // Right side: freshness per provider.
+    // Right side first: freshness per provider is the higher-value half,
+    // so it claims its width and the key hints take what is left.
     let mut right = Vec::new();
     for provider in &app.enabled_providers {
         let freshness = app.freshness(*provider, now);
@@ -128,5 +119,97 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             Style::default().fg(theme.freshness(freshness)),
         ));
     }
-    frame.render_widget(Paragraph::new(Line::from(right).right_aligned()), area);
+    let right_line = Line::from(right);
+    let right_width = right_line.width() as u16;
+
+    // Drop key hints from the right end until they fit beside the
+    // freshness block: two paragraphs share this row, so the left half
+    // must be told how much room it actually has.
+    let key_budget = area.width.saturating_sub(right_width);
+    let mut spans = Vec::new();
+    let mut used = 0u16;
+    for (key, label) in keys {
+        let cost = (key.chars().count() + label.chars().count() + 3) as u16;
+        if used + cost > key_budget {
+            break;
+        }
+        used += cost;
+        spans.push(Span::styled(
+            format!(" {key} "),
+            theme.title().add_modifier(Modifier::REVERSED),
+        ));
+        spans.push(Span::styled(format!("{label} "), theme.dim()));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    frame.render_widget(Paragraph::new(right_line.right_aligned()), area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use crate::domain::{CollectorHealth, CollectorStatus, Provider, ProviderSnapshot};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+
+    fn app_with_providers(now: DateTime<Utc>) -> App {
+        let mut app = App::new(now, 5);
+        for provider in [Provider::Codex, Provider::Claude] {
+            let snap = ProviderSnapshot::empty(
+                provider,
+                CollectorHealth {
+                    status: CollectorStatus::Ok,
+                    message: None,
+                    last_scan: Some(now),
+                    files_scanned: 1,
+                    parse_errors: 0,
+                },
+            );
+            app.apply_update(snap, now);
+        }
+        app
+    }
+
+    /// The footer draws two paragraphs into one row; the key hints must
+    /// yield space rather than overwrite the freshness readout.
+    fn footer_row(width: u16) -> String {
+        let now = Utc::now();
+        let app = app_with_providers(now);
+        let theme = Theme::new(false);
+        let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
+        terminal
+            .draw(|frame| render_footer(frame, Rect::new(0, 0, width, 1), &app, &theme, now))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..width)
+            .map(|x| buffer[(x, 0)].symbol().to_string())
+            .collect()
+    }
+
+    /// The freshness paragraph renders over the key hints, so an overrun
+    /// shows up as a hint running straight into "Codex" with no gap
+    /// (e.g. "o sCodex fresh"). Every width must keep them separated.
+    #[test]
+    fn footer_keys_never_collide_with_freshness() {
+        for width in [60u16, 80, 100, 110, 120, 140, 160, 200] {
+            let row = footer_row(width);
+            let freshness_start = row.find("Codex fresh").unwrap_or_else(|| {
+                panic!("width {width}: freshness missing entirely: {row:?}")
+            });
+            // Whatever precedes the freshness block must be blank padding,
+            // not a key hint sliced in half.
+            assert!(
+                row[..freshness_start].ends_with("  ") || freshness_start == 0,
+                "width {width}: key hints collide with freshness: {row:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn footer_keeps_leading_hints_when_space_allows() {
+        let row = footer_row(200);
+        assert!(row.contains("codex"), "wide footer lost its hints: {row:?}");
+        assert!(row.contains("planner"), "wide footer lost hints: {row:?}");
+    }
 }

@@ -196,9 +196,11 @@ impl LiveProvider {
                 }
             )),
             // The Codex endpoint's bot protection answers 403 to clients it
-            // dislikes or that poll too fast — auth may be fine.
+            // dislikes or that poll too fast. A rejected token answers 401
+            // (handled above), so this is not an auth problem and must not
+            // send anyone off to re-authenticate.
             Err(ureq::Error::Status(403, _)) => {
-                Err("blocked by the endpoint (bot protection or expired auth)".to_string())
+                Err("endpoint refused the request (bot protection, not auth)".to_string())
             }
             Err(ureq::Error::Status(code, _)) => Err(format!("usage endpoint returned {code}")),
             Err(ureq::Error::Transport(_)) => Err("network unreachable".to_string()),
