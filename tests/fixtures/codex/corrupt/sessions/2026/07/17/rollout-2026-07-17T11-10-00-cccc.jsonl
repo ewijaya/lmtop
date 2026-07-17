@@ -1,0 +1,5 @@
+{"timestamp":"2026-07-17T11:10:00.000Z","type":"session_meta","payload":{"id":"codex-cccc","timestamp":"2026-07-17T11:10:00.000Z","cwd":"/home/user/projects/gamma","originator":"codex_cli_rs","cli_version":"0.99.0","source":"cli","thread_source":"user"}}
+{"timestamp":"2026-07-17T11:11:00.000Z","type":"turn_context","payload":{"model":"gpt-5.6-terra","effort":"high","summary":"auto","cwd":"/home/user/projects/x"}}
+{this is not json
+{"timestamp":"2026-07-17T11:20:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":500,"cached_input_tokens":200,"output_tokens":50,"reasoning_output_tokens":5,"total_tokens":550},"last_token_usage":{"input_tokens":500,"cached_input_tokens":200,"output_tokens":50,"reasoning_output_tokens":5,"total_tokens":550},"model_context_window":258400},"rate_limits":null}}
+{"timestamp":"2026-07-17T11:2

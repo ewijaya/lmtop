@@ -1,0 +1,19 @@
+target/
+.env
+.env.*
+*.log
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.DS_Store
+.idea/
+.vscode/
+
+# Never commit real provider data, auth material, or usage history.
+*.jsonl
+!tests/fixtures/**/*.jsonl
+auth.json
+credentials*.json
+token*.json
+usage-history*
