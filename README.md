@@ -19,10 +19,15 @@ question — **subscription capacity planning**:
 - **How quickly is capacity being consumed?**
 - **Am I likely to exhaust it before the reset?**
 
-![lmtop dashboard](docs/images/dashboard.png)
+![lmtop combined dashboard](docs/images/dashboard-combined.png)
 
-*Combined view. Data shown is synthetic (from `tests/fixtures/`), so no real
-project names or usage appear.*
+*Combined view: provider quota windows with reset countdowns, observed
+token rate, live sessions, and the weekly model breakdown.*
+
+![lmtop planner view](docs/images/dashboard-planner.png)
+
+*Planner view (key `4`): every quota window races capacity used against
+time elapsed, so "will it last?" is answered at a glance.*
 
 > lmtop is an independent open-source project. It is not affiliated with,
 > sponsored by, or endorsed by OpenAI or Anthropic.
