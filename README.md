@@ -19,22 +19,10 @@ question — **subscription capacity planning**:
 - **How quickly is capacity being consumed?**
 - **Am I likely to exhaust it before the reset?**
 
-```text
-┌─ CODEX ────────────────────────────┬─ CLAUDE ───────────────────────────┐
-│ 5h      ██████████░░░  67.0% ↻2h05m ⚠ empty ~1h40m (high)               │
-│ Weekly  █████░░░░░░░░  39.2% ↻3d 4h ✓ lasts                             │
-│ Credits 188                        │ Weekly (Fable) ████████░░░  52%    │
-│ Observed session 1.2M · week 45.6M │ Observed session 890k · week 12.3M │
-├─ TOKEN RATE (tokens/min, observed) ┴────────────────────────────────────┤
-│        ⢀⣴⣧⡀       Codex in/out · Claude in/out                          │
-├─ SESSIONS ──────────────────────────────────────────────────────────────┤
-│ Provider  Model      Context  Tok/min  Tokens  Project     Age   State  │
-├─ WEEKLY USAGE (observed) ──────────┬─ MODEL BREAKDOWN (week) ───────────┤
-│ in / cached / cache-write / out    │ Fable 5   ███████  45%             │
-└────────────────────────────────────┴────────────────────────────────────┘
-```
+![lmtop dashboard](docs/images/dashboard.png)
 
-*(screenshot placeholder — real capture pending)*
+*Combined view. Data shown is synthetic (from `tests/fixtures/`), so no real
+project names or usage appear.*
 
 > lmtop is an independent open-source project. It is not affiliated with,
 > sponsored by, or endorsed by OpenAI or Anthropic.
