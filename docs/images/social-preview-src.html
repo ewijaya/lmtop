@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: 'DejaVu Sans Mono', 'Ubuntu Mono', monospace;
+    background:
+      radial-gradient(1000px 620px at 78% 30%, rgba(63,185,80,0.10), transparent 60%),
+      radial-gradient(900px 600px at 15% 85%, rgba(88,166,255,0.10), transparent 60%),
+      #0a0e14;
+    color: #e6edf3;
+    display: flex;
+    align-items: center;
+    padding: 0 60px;
+    gap: 52px;
+    position: relative;
+  }
+  body::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,0.012) 3px 4px);
+    pointer-events: none;
+  }
+  .brand { width: 480px; flex: none; }
+  .wordmark { font-size: 108px; font-weight: bold; letter-spacing: -2px; line-height: 1; }
+  .wordmark .prompt { color: #3fb950; }
+  .wordmark .top { color: #58a6ff; }
+  .tagline { margin-top: 28px; font-size: 28px; line-height: 1.4; color: #c9d4e0; }
+  .tagline b { color: #ffffff; }
+  .sub { margin-top: 20px; font-size: 20px; color: #8b98a9; line-height: 1.65; }
+  .chips { margin-top: 30px; display: flex; gap: 12px; }
+  .chip {
+    font-size: 17px; padding: 8px 16px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid #2b3a4e; color: #9fb0c3; background: rgba(255,255,255,0.02);
+  }
+  .chip.rust { color: #f0883e; border-color: #4d3320; }
+  .url { margin-top: 32px; font-size: 20px; color: #6e7f93; }
+  .url span { color: #9fb0c3; }
+
+  .term {
+    flex: 1;
+    background: #0d1420;
+    border: 1px solid #223048;
+    border-radius: 14px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.02) inset;
+    overflow: hidden;
+  }
+  .termbar {
+    height: 42px; background: #111a2a; border-bottom: 1px solid #1c2940;
+    display: flex; align-items: center; padding: 0 18px; gap: 9px;
+  }
+  .dot { width: 13px; height: 13px; border-radius: 50%; }
+  .termbar .title { margin-left: auto; margin-right: auto; font-size: 16px; color: #6e7f93; }
+  .screen { padding: 26px 24px 28px; display: flex; flex-direction: column; gap: 22px; }
+
+  .panel { position: relative; border: 1.5px solid #2b3a4e; border-radius: 10px; padding: 20px 18px 14px; }
+  .panel-name {
+    position: absolute; top: -13px; left: 14px; padding: 0 8px;
+    background: #0d1420; font-size: 18px; font-weight: bold; letter-spacing: 1px;
+  }
+  .panel-name.codex { color: #f0883e; }
+  .panel-name.claude { color: #58a6ff; }
+
+  .row { display: flex; align-items: center; gap: 12px; font-size: 19px; height: 34px; }
+  .row .lbl { width: 92px; flex: none; color: #c9d4e0; }
+  .gauge { flex: 1; height: 14px; border-radius: 4px; background: #1b2740; overflow: hidden; }
+  .gauge .fill { display: block; height: 100%; border-radius: 4px; }
+  .fill.g { background: linear-gradient(90deg, #2ea043, #3fb950); }
+  .fill.y { background: linear-gradient(90deg, #bb8009, #d29922); }
+  .row .pct { width: 58px; flex: none; text-align: right; color: #fff; font-weight: bold; }
+  .row .reset { width: 92px; flex: none; color: #66768a; }
+  .row .status { width: 88px; flex: none; }
+  .ok { color: #3fb950; }
+  .warn { color: #d29922; }
+  .meta { font-size: 18px; color: #66768a; margin-top: 6px; }
+  .meta b { color: #9fb0c3; font-weight: normal; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="wordmark"><span class="prompt">$ </span>lm<span class="top">top</span></div>
+    <div class="tagline"><b>top</b>, but for your AI coding agents.</div>
+    <div class="sub">Live quotas · burn rate · reset times · projected exhaustion — for Codex &amp; Claude Code, right in the terminal.</div>
+    <div class="chips">
+      <span class="chip rust">Rust · Ratatui</span>
+      <span class="chip">local-first</span>
+      <span class="chip">no API keys</span>
+    </div>
+    <div class="url">github.com/<span>ewijaya/lmtop</span></div>
+  </div>
+
+  <div class="term">
+    <div class="termbar">
+      <span class="dot" style="background:#ff5f57"></span>
+      <span class="dot" style="background:#febc2e"></span>
+      <span class="dot" style="background:#28c840"></span>
+      <span class="title">lmtop — combined view</span>
+    </div>
+    <div class="screen">
+      <div class="panel">
+        <div class="panel-name codex">CODEX</div>
+        <div class="row">
+          <span class="lbl">Weekly</span>
+          <span class="gauge"><span class="fill y" style="width:60%"></span></span>
+          <span class="pct">60%</span><span class="reset">↻6d 19h</span><span class="status ok">✓ lasts</span>
+        </div>
+        <div class="meta">Credits <b>188</b> · model <b>gpt-5.6-terra</b></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-name claude">CLAUDE</div>
+        <div class="row">
+          <span class="lbl">5h</span>
+          <span class="gauge"><span class="fill g" style="width:12%"></span></span>
+          <span class="pct">12%</span><span class="reset">↻4h33m</span><span class="status ok">✓ lasts</span>
+        </div>
+        <div class="row">
+          <span class="lbl">Weekly</span>
+          <span class="gauge"><span class="fill g" style="width:12%"></span></span>
+          <span class="pct">12%</span><span class="reset">↻3d 2h</span><span class="status ok">✓ lasts</span>
+        </div>
+        <div class="row">
+          <span class="lbl">Fable</span>
+          <span class="gauge"><span class="fill g" style="width:16%"></span></span>
+          <span class="pct">16%</span><span class="reset">↻3d 2h</span><span class="status warn">⚠ 8%/h</span>
+        </div>
+        <div class="meta">Observed  session <b>18.6M</b> · week <b>287.5M</b> tokens</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
