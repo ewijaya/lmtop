@@ -111,6 +111,23 @@ pub fn render_provider_panel(
         });
         for w in windows {
             let pct = w.used_percent;
+            // A reset time in the past means the window rolled over since
+            // this snapshot was captured: the percentage describes a
+            // finished window, so it must not render as a live value.
+            if w.is_expired(now) {
+                let ended = w
+                    .resets_at
+                    .map(|t| crate::tui::theme::fmt_age(now.signed_duration_since(t).num_seconds()))
+                    .unwrap_or_else(|| "?".into());
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{:<8}", w.label()), theme.text()),
+                    Span::styled(
+                        format!("stale · window reset {ended} ago · last {pct:.0}%"),
+                        theme.dim(),
+                    ),
+                ]));
+                continue;
+            }
             let reset = w
                 .resets_at
                 .map(|t| {

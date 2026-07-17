@@ -138,6 +138,14 @@ impl QuotaWindow {
         }
     }
 
+    /// Whether the reported reset time has already passed. The window
+    /// rolled over after this snapshot was captured, so the percentage
+    /// describes a finished window, not the current one — it must be shown
+    /// as stale, never as a live value.
+    pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
+        self.resets_at.is_some_and(|t| t <= now)
+    }
+
     /// Whether the window is projected to run out before its reset. Uses
     /// only provider-reported percentages and their trend — never locally
     /// observed token counts.

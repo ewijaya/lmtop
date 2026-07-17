@@ -21,6 +21,7 @@
 //!   `secondary` absent.
 
 use super::jsonl::JsonlTail;
+use super::live_quota::LiveQuota;
 use super::store::{UsageStore, project_name};
 use super::{Collector, ScanContext};
 use crate::aggregation::{self, QuotaSample};
@@ -51,6 +52,9 @@ pub struct CodexCollector {
     quota_samples: BTreeMap<Option<u64>, Vec<QuotaSample>>,
     /// Latest observed state per window identity.
     latest_window: BTreeMap<Option<u64>, LatestWindow>,
+    /// Opt-in live quota fetcher (`network_quota = true`); its samples run
+    /// through the same ingestion path as rollout-file snapshots.
+    live: Option<LiveQuota>,
     credits: Option<Credits>,
     cli_version: Option<String>,
     parse_errors: u64,
@@ -96,6 +100,7 @@ impl CodexCollector {
             session_owner: HashMap::new(),
             quota_samples: BTreeMap::new(),
             latest_window: BTreeMap::new(),
+            live: cfg.network_quota.then(LiveQuota::for_codex),
             credits: None,
             cli_version: None,
             parse_errors: 0,
@@ -108,6 +113,7 @@ impl CodexCollector {
         let mut collector = Self::from_config(&ProviderConfig::default());
         collector.codex_home = None;
         collector.session_dirs = session_dirs.into_iter().filter(|p| p.is_dir()).collect();
+        collector.live = None;
         collector
     }
 
@@ -387,7 +393,9 @@ impl Collector for CodexCollector {
     }
 
     fn scan(&mut self, ctx: &ScanContext) -> ProviderSnapshot {
-        if self.session_dirs.is_empty() {
+        // Without session logs there is nothing to observe locally — but the
+        // opt-in live quota fetch can still report account state.
+        if self.session_dirs.is_empty() && self.live.is_none() {
             return ProviderSnapshot::empty(
                 Provider::Codex,
                 CollectorHealth::unavailable("no Codex session directory found"),
@@ -422,16 +430,30 @@ impl Collector for CodexCollector {
         }
         self.store.trim(ctx);
 
+        // Live quota, when enabled: each fresh response is normalized into
+        // the rollout `rate_limits` shape and ingested exactly once.
+        if let Some(live) = self.live.as_mut()
+            && let Some(rate_limits) = live.codex_rate_limits(ctx.now)
+        {
+            self.ingest_rate_limits(&rate_limits, ctx.now);
+        }
+
         let quota_windows = self.build_quota_windows(ctx);
-        let status = if self.parse_errors > 0 {
-            CollectorStatus::Degraded
-        } else {
+        let mut problems = Vec::new();
+        if self.parse_errors > 0 {
+            problems.push(format!("{} unparsable lines skipped", self.parse_errors));
+        }
+        if let Some(err) = self.live.as_ref().and_then(|l| l.last_error.as_ref()) {
+            problems.push(format!("live quota: {err} — using local data"));
+        }
+        let status = if problems.is_empty() {
             CollectorStatus::Ok
+        } else {
+            CollectorStatus::Degraded
         };
         let health = CollectorHealth {
             status,
-            message: (self.parse_errors > 0)
-                .then(|| format!("{} unparsable lines skipped", self.parse_errors)),
+            message: (!problems.is_empty()).then(|| problems.join(" · ")),
             last_scan: Some(ctx.now),
             files_scanned: self.files_scanned,
             parse_errors: self.parse_errors,

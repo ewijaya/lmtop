@@ -17,17 +17,37 @@ above. Prompt bodies, assistant output, and tool results are present in
 those files but are **never stored, aggregated, logged, or displayed** —
 parsing extracts token counts and identifiers only.
 
+## Opt-in live quota (`network_quota` / `--live`)
+
+Disabled by default. When you enable it, and only then:
+
+- lmtop reads the **access token** the provider's own CLI already stores
+  locally (`~/.claude/.credentials.json` → `claudeAiOauth.accessToken`;
+  `~/.codex/auth.json` → `tokens.access_token` and `tokens.account_id`).
+- The token is used for exactly one thing: the `Authorization` header of a
+  GET request to that provider's own usage endpoint
+  (`api.anthropic.com/api/oauth/usage`;
+  `chatgpt.com/backend-api/codex/usage`). It is never logged, persisted,
+  displayed, or sent anywhere else, and nothing else in the credential
+  files is read into program state.
+- Responses contain only quota percentages, reset times, plan/credit
+  metadata — the same numbers the provider's CLI shows in its own status
+  screen. Refresh tokens are never touched; tokens are never refreshed or
+  modified.
+- `--offline` always wins over `network_quota`, whatever the config says.
+
 ## What is never done
 
-- **No credential access.** Authentication files (`auth.json`, OAuth
-  tokens, keychains) are never read, printed, persisted, uploaded, or
-  logged. `doctor` reports only whether an auth artifact *exists*.
+- **No credential access without opt-in.** By default, authentication
+  files (`auth.json`, OAuth tokens, keychains) are never read, printed,
+  persisted, uploaded, or logged. `doctor` reports only whether an auth
+  artifact *exists*. With `network_quota` enabled, only the token fields
+  listed above are read, for the single purpose described above.
 - **No credential modification.** Codex and Claude authentication files
   are never written to.
-- **No network calls.** The MVP makes zero network requests. Future
-  network-backed quota collectors will be opt-in per provider
-  (`network_quota = true`), clearly labeled, and disabled by default.
-  `--offline` guarantees nothing touches the network.
+- **No network calls by default.** Without `network_quota`/`--live`, zero
+  network requests are made. With it, the only requests are the two usage
+  GETs above. `--offline` guarantees nothing touches the network.
 - **No API keys.** Core functionality never asks for one.
 - **No telemetry.** Nothing leaves your machine.
 - **No transcript copies.** Raw session files are never copied into any

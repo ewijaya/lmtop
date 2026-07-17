@@ -161,11 +161,9 @@ program state):
   refuses burn projections from stale samples.
 
 If `~/.claude.json` is absent the `provider_quota` and `reset_times`
-capabilities are not declared and the UI shows quota as unavailable.
+capabilities are not declared and the UI shows quota as unavailable —
+unless the live collector below is enabled.
 Claude exposes no local credit balance, so `credits` is never declared.
-Claude's OAuth-backed usage API would require network calls with the
-user's credentials; if ever added it will be an opt-in network collector
-(`network_quota = true`), disabled by default.
 
 ### Not used
 
@@ -175,13 +173,47 @@ user's credentials; if ever added it will be an opt-in network collector
 - Everything in `~/.claude.json` other than `cachedUsageUtilization`.
 - Sidechain agent transcripts beyond their usage fields.
 
+## Live quota endpoints (opt-in, `network_quota = true` / `--live`)
+
+The file-based sources above update only while the CLI runs *on this
+machine* — usage from another device, or simply time passing, is invisible
+to them, and a cached window can even outlive its own reset. The opt-in
+live collector closes that gap by querying the endpoint each CLI's own
+status screen uses, authenticated with the token that CLI already stores
+(verified 2026-07-17):
+
+- **Claude:** `GET https://api.anthropic.com/api/oauth/usage` with the
+  OAuth token from `~/.claude/.credentials.json` and header
+  `anthropic-beta: oauth-2025-04-20`. The response body is exactly the
+  `utilization` subtree cached in `~/.claude.json`, so it flows through
+  the same parser. Fetched at most once per minute.
+- **Codex:** `GET https://chatgpt.com/backend-api/codex/usage` with the
+  token and `chatgpt-account-id` from `~/.codex/auth.json`. Response
+  carries `rate_limit.primary_window` / `secondary_window`
+  (`used_percent`, `limit_window_seconds`, `reset_at`) plus
+  `credits.balance`; it is normalized into the rollout `rate_limits`
+  shape and ingested through the same path. Fetched at most once per
+  five minutes — the endpoint sits behind bot protection that answers
+  403 to clients it dislikes or that poll too fast. (It also rejects
+  rustls and curl TLS fingerprints outright, which is why lmtop uses
+  native-tls/OpenSSL, the same stack as the Codex CLI itself.)
+
+A failed live fetch degrades to the file-based sources and says so in the
+collector health line; expired tokens are reported ("run Claude Code /
+Codex to refresh"), never refreshed by lmtop. See `docs/privacy.md` for
+the exact credential-handling contract.
+
 ## Freshness caveat
 
-Both collectors are file-based: quota snapshots and token counts are only
-as fresh as the most recent agent activity. The dashboard surfaces this —
-quota lines older than 10 minutes carry an age marker, and burn/exhaustion
-projections are suppressed entirely when the newest quota sample is older
-than 30 minutes rather than extrapolating stale trends.
+The default collectors are file-based: quota snapshots and token counts
+are only as fresh as the most recent agent activity on this machine. The
+dashboard surfaces this — quota lines older than 10 minutes carry an age
+marker, burn/exhaustion projections are suppressed entirely when the
+newest quota sample is older than 30 minutes rather than extrapolating
+stale trends, and a window whose reported reset time has already passed
+is rendered as *stale* (the percentage describes a finished window, not
+the current one). Enabling the live collector removes the staleness at
+the cost of two authenticated GETs per refresh interval.
 
 ## Schema drift
 

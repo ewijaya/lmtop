@@ -22,7 +22,10 @@ enabled = true
 # Extra directories to scan for Codex rollout files, in addition to
 # ~/.codex/sessions.
 session_paths = []
-# Allow a future network-backed quota collector (off: local-first).
+# Fetch live quota from the provider's own usage endpoint, authenticated
+# with the access token the provider's CLI already stores locally
+# (~/.codex/auth.json). Off by default: the application is local-first.
+# --offline always wins over this setting. See docs/privacy.md.
 network_quota = false
 
 [providers.claude]
@@ -30,6 +33,7 @@ enabled = true
 # Extra directories to scan for Claude Code project logs, in addition to
 # ~/.claude/projects.
 session_paths = []
+# Same as above, using ~/.claude/.credentials.json.
 network_quota = false
 
 [ui]
@@ -66,6 +70,7 @@ Flags override the config file:
 ```text
 --provider codex|claude   monitor one provider only
 --offline                 disable all network access
+--live                    network_quota = true for all enabled providers
 --refresh <secs>          collector refresh interval
 --ascii                   ASCII bars and charts
 --config <path>           alternate config file

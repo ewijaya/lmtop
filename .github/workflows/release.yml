@@ -62,12 +62,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      # aarch64 needs a cross linker; x86_64 builds natively.
+      # aarch64 needs a cross linker; x86_64 builds natively. The CC/AR
+      # variables also steer the vendored-OpenSSL build (native-tls pulls
+      # openssl-src on musl targets, where no system OpenSSL exists).
       - name: Install cross linker
         if: matrix.cross
         run: |
           sudo apt-get install -y gcc-aarch64-linux-gnu musl-dev
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "AR_aarch64_unknown_linux_musl=aarch64-linux-gnu-ar" >> "$GITHUB_ENV"
 
       - run: cargo build --release --locked --target ${{ matrix.target }}
 

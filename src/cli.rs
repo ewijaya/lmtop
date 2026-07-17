@@ -27,6 +27,12 @@ struct Cli {
     #[arg(long, global = true)]
     offline: bool,
 
+    /// Fetch live quota from the providers' own usage endpoints, using the
+    /// access tokens their CLIs already store locally (equivalent to
+    /// `network_quota = true` for every enabled provider).
+    #[arg(long, global = true, conflicts_with = "offline")]
+    live: bool,
+
     /// Collector refresh interval in seconds.
     #[arg(long, global = true)]
     refresh: Option<u64>,
@@ -67,6 +73,15 @@ pub fn run() -> Result<()> {
     }
     if cli.offline {
         cfg.ui.offline = true;
+    }
+    if cli.live {
+        cfg.providers.codex.network_quota = true;
+        cfg.providers.claude.network_quota = true;
+    }
+    // Offline always wins over network_quota, whatever their sources.
+    if cfg.ui.offline {
+        cfg.providers.codex.network_quota = false;
+        cfg.providers.claude.network_quota = false;
     }
     if let Some(provider) = cli.provider {
         cfg.providers.codex.enabled &= provider == Provider::Codex;
@@ -171,10 +186,32 @@ fn render_snapshot_text(snapshot: &UsageSnapshot) -> String {
             provider.display_name(),
             snap.health.status
         ));
+        if let Some(msg) = &snap.health.message {
+            out.push_str(&format!("  note:         {msg}\n"));
+        }
         if snap.quota_windows.is_empty() {
             out.push_str("  quota:        unavailable\n");
         }
         for w in &snap.quota_windows {
+            // The window rolled over since this snapshot was captured; its
+            // percentage describes a finished window, not the current one.
+            if w.is_expired(snapshot.generated_at) {
+                let reset = w
+                    .resets_at
+                    .map(|t| {
+                        t.with_timezone(&chrono::Local)
+                            .format("%m-%d %H:%M %Z")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "?".into());
+                out.push_str(&format!(
+                    "  quota {:<8} stale — window reset {} (last seen {:.1}%)\n",
+                    w.label(),
+                    reset,
+                    w.used_percent
+                ));
+                continue;
+            }
             let reset = w
                 .resets_at
                 .map(|t| {

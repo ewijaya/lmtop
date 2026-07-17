@@ -27,6 +27,7 @@
 //!   fields in the file are never read into program state.
 
 use super::jsonl::JsonlTail;
+use super::live_quota::LiveQuota;
 use super::store::{UsageStore, project_name};
 use super::{Collector, ScanContext};
 use crate::aggregation::{self, QuotaSample};
@@ -56,6 +57,9 @@ pub struct ClaudeCollector {
     files_scanned: u64,
     /// Claude Code's own quota cache (`~/.claude.json`), when present.
     quota_file: Option<PathBuf>,
+    /// Opt-in live quota fetcher (`network_quota = true`); preferred over
+    /// the cache file when it has a response.
+    live: Option<LiveQuota>,
     /// Percentage samples per window key, for burn-velocity estimation.
     quota_samples: BTreeMap<String, Vec<QuotaSample>>,
     /// `fetchedAtMs` of the newest quota cache already sampled.
@@ -86,6 +90,7 @@ impl ClaudeCollector {
             parse_errors: 0,
             files_scanned: 0,
             quota_file,
+            live: cfg.network_quota.then(LiveQuota::for_claude),
             quota_samples: BTreeMap::new(),
             last_quota_fetched_ms: None,
         }
@@ -97,6 +102,7 @@ impl ClaudeCollector {
         collector.claude_home = None;
         collector.project_dirs = project_dirs.into_iter().filter(|p| p.is_dir()).collect();
         collector.quota_file = None;
+        collector.live = None;
         collector
     }
 
@@ -135,10 +141,10 @@ impl ClaudeCollector {
             Capability::ModelBreakdown,
             Capability::History,
         ];
-        // Quota comes from Claude Code's own cache file; without it the
-        // capability is honestly absent (no credits either way — Claude
-        // exposes no local credit balance).
-        if self.quota_file.is_some() {
+        // Quota comes from Claude Code's own cache file or the opt-in live
+        // fetch; without either the capability is honestly absent (no
+        // credits either way — Claude exposes no local credit balance).
+        if self.quota_file.is_some() || self.live.is_some() {
             caps.push(Capability::ProviderQuota);
             caps.push(Capability::ResetTimes);
         }
@@ -233,36 +239,40 @@ impl ClaudeCollector {
 }
 
 impl ClaudeCollector {
-    /// Read Claude Code's own quota cache (`cachedUsageUtilization` in
-    /// `~/.claude.json`). Only that subtree is extracted; nothing else in
-    /// the file (account ids, OAuth data, telemetry state) is read into
-    /// program state. Absent or unparsable data yields no windows — quota
-    /// is never inferred from observed tokens.
-    fn read_quota(&mut self, ctx: &ScanContext) -> Vec<QuotaWindow> {
-        let Some(path) = &self.quota_file else {
-            return Vec::new();
-        };
-        let Ok(text) = std::fs::read_to_string(path) else {
-            return Vec::new();
-        };
-        let Ok(root) = serde_json::from_str::<Value>(&text) else {
-            return Vec::new();
-        };
-        let Some(cache) = root.get("cachedUsageUtilization") else {
-            return Vec::new();
-        };
-        let captured_at = cache
-            .get("fetchedAtMs")
-            .and_then(Value::as_i64)
+    /// The freshest quota view available: the live usage endpoint when
+    /// `network_quota` is enabled (its response is exactly the
+    /// `utilization` shape Claude Code caches), otherwise Claude Code's own
+    /// cache (`cachedUsageUtilization` in `~/.claude.json`). Only that
+    /// subtree is extracted from the cache file; nothing else in it
+    /// (account ids, OAuth data, telemetry state) is read into program
+    /// state.
+    fn quota_source(&mut self, ctx: &ScanContext) -> Option<(Value, DateTime<Utc>, Option<i64>)> {
+        if let Some(live) = self.live.as_mut()
+            && let Some((value, fetched_at)) = live.claude_utilization(ctx.now)
+        {
+            return Some((value, fetched_at, Some(fetched_at.timestamp_millis())));
+        }
+        let path = self.quota_file.as_ref()?;
+        let text = std::fs::read_to_string(path).ok()?;
+        let root = serde_json::from_str::<Value>(&text).ok()?;
+        let cache = root.get("cachedUsageUtilization")?;
+        let fetched_ms = cache.get("fetchedAtMs").and_then(Value::as_i64);
+        let captured_at = fetched_ms
             .and_then(chrono::DateTime::from_timestamp_millis)
             .unwrap_or(ctx.now);
-        let fetched_ms = cache.get("fetchedAtMs").and_then(Value::as_i64);
-        let is_new_sample = fetched_ms != self.last_quota_fetched_ms;
-        self.last_quota_fetched_ms = fetched_ms;
+        let utilization = cache.get("utilization")?.clone();
+        Some((utilization, captured_at, fetched_ms))
+    }
 
-        let Some(utilization) = cache.get("utilization") else {
+    /// Parse quota windows out of the freshest available source. Absent or
+    /// unparsable data yields no windows — quota is never inferred from
+    /// observed tokens.
+    fn read_quota(&mut self, ctx: &ScanContext) -> Vec<QuotaWindow> {
+        let Some((utilization, captured_at, fetched_ms)) = self.quota_source(ctx) else {
             return Vec::new();
         };
+        let is_new_sample = fetched_ms != self.last_quota_fetched_ms;
+        self.last_quota_fetched_ms = fetched_ms;
 
         let mut raw: Vec<RawQuotaWindow> = Vec::new();
         for (name, kind, minutes) in [
@@ -367,7 +377,9 @@ impl Collector for ClaudeCollector {
     }
 
     fn scan(&mut self, ctx: &ScanContext) -> ProviderSnapshot {
-        if self.project_dirs.is_empty() {
+        // Without session logs there is nothing to observe locally — but the
+        // opt-in live quota fetch can still report account state.
+        if self.project_dirs.is_empty() && self.live.is_none() {
             return ProviderSnapshot::empty(
                 Provider::Claude,
                 CollectorHealth::unavailable("no Claude Code projects directory found"),
@@ -398,15 +410,21 @@ impl Collector for ClaudeCollector {
         self.store.trim(ctx);
         let quota_windows = self.read_quota(ctx);
 
-        let status = if self.parse_errors > 0 {
-            CollectorStatus::Degraded
-        } else {
+        let mut problems = Vec::new();
+        if self.parse_errors > 0 {
+            problems.push(format!("{} unparsable lines skipped", self.parse_errors));
+        }
+        if let Some(err) = self.live.as_ref().and_then(|l| l.last_error.as_ref()) {
+            problems.push(format!("live quota: {err} — using local cache"));
+        }
+        let status = if problems.is_empty() {
             CollectorStatus::Ok
+        } else {
+            CollectorStatus::Degraded
         };
         let health = CollectorHealth {
             status,
-            message: (self.parse_errors > 0)
-                .then(|| format!("{} unparsable lines skipped", self.parse_errors)),
+            message: (!problems.is_empty()).then(|| problems.join(" · ")),
             last_scan: Some(ctx.now),
             files_scanned: self.files_scanned,
             parse_errors: self.parse_errors,
