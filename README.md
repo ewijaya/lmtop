@@ -69,7 +69,27 @@ Unavailable capabilities are shown as *unavailable*, never invented. See
 `docs/data-sources.md` for exactly where each number comes from and
 `docs/privacy.md` for what is never read.
 
-## Install / build
+## Install
+
+### Homebrew (macOS, Linux)
+
+```bash
+brew install ewijaya/tap/lmtop
+```
+
+### Pre-built binary
+
+Download a tarball for your platform from the
+[latest release](https://github.com/ewijaya/lmtop/releases/latest), then:
+
+```bash
+tar -xzf lmtop-*-$(uname -m)-*.tar.gz
+sudo install -m755 lmtop-*/lmtop /usr/local/bin/lmtop
+```
+
+Checksums for every archive are published as `SHA256SUMS` on the release.
+
+### From source
 
 Stable Rust required ([rustup](https://rustup.rs)):
 
@@ -79,6 +99,11 @@ cd lmtop
 cargo build --release
 ./target/release/lmtop
 ```
+
+> **Not packaged in `apt`.** `apt install lmtop` resolves against Debian and
+> Ubuntu's own archives, which requires a maintainer to sponsor the package
+> through their review process — and would then ship a version well behind
+> this repository. Use Homebrew or a release binary instead.
 
 ## Usage
 
