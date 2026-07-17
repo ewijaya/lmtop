@@ -31,9 +31,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          # Linux uses musl, statically linked. A glibc build on ubuntu-latest
+          # links against the runner's glibc (2.39 on 24.04) and then refuses
+          # to start on any older distro — Ubuntu 22.04 LTS and Debian 12
+          # included. musl has no such dependency and runs anywhere.
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             cross: true
           - target: x86_64-apple-darwin
@@ -52,13 +56,18 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      # aarch64 Linux needs a cross linker; the others build natively.
+      - name: Install musl tooling
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      # aarch64 needs a cross linker; x86_64 builds natively.
       - name: Install cross linker
         if: matrix.cross
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          sudo apt-get install -y gcc-aarch64-linux-gnu musl-dev
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
       - run: cargo build --release --locked --target ${{ matrix.target }}
 
@@ -150,8 +159,8 @@ jobs:
           sha() { sha256sum "lmtop-${VERSION}-$1.tar.gz" | cut -d' ' -f1; }
           mac_arm=$(sha aarch64-apple-darwin)
           mac_x86=$(sha x86_64-apple-darwin)
-          lin_arm=$(sha aarch64-unknown-linux-gnu)
-          lin_x86=$(sha x86_64-unknown-linux-gnu)
+          lin_arm=$(sha aarch64-unknown-linux-musl)
+          lin_x86=$(sha x86_64-unknown-linux-musl)
           cd ..
 
           mkdir -p tap/Formula
@@ -177,11 +186,11 @@ jobs:
 
             on_linux do
               on_arm do
-                url "${base}/lmtop-${VERSION}-aarch64-unknown-linux-gnu.tar.gz"
+                url "${base}/lmtop-${VERSION}-aarch64-unknown-linux-musl.tar.gz"
                 sha256 "${lin_arm}"
               end
               on_intel do
-                url "${base}/lmtop-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+                url "${base}/lmtop-${VERSION}-x86_64-unknown-linux-musl.tar.gz"
                 sha256 "${lin_x86}"
               end
             end
