@@ -67,23 +67,19 @@ jobs:
       # dependencies compiled with it emit glibc-only symbols (__memcpy_chk,
       # stat64, mmap64) that fail to link against musl. That went unnoticed
       # until bundled SQLite became the first C code cross-built for this
-      # target. The CC/AR variables also steer the vendored-OpenSSL build
+      # target. Zig (via cargo-zigbuild) provides the musl toolchain; it
+      # installs from PyPI, which — unlike musl.cc, whose unreachability
+      # from Actions runners failed a release — is dependable
+      # infrastructure. This also covers the vendored-OpenSSL build
       # (native-tls pulls openssl-src on musl targets, where no system
       # OpenSSL exists).
-      - name: Install aarch64 musl cross toolchain
+      - name: Install zig cross toolchain
         if: matrix.cross
         run: |
-          curl -fsSL --retry 3 -o musl-cross.tgz \
-            https://musl.cc/aarch64-linux-musl-cross.tgz
-          echo "c909817856d6ceda86aa510894fa3527eac7989f0ef6e87b5721c58737a06c38  musl-cross.tgz" \
-            | sha256sum -c -
-          sudo tar -xzf musl-cross.tgz -C /opt
-          echo "/opt/aarch64-linux-musl-cross/bin" >> "$GITHUB_PATH"
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> "$GITHUB_ENV"
-          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> "$GITHUB_ENV"
-          echo "AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar" >> "$GITHUB_ENV"
+          pip3 install --user cargo-zigbuild ziglang
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - run: cargo ${{ matrix.cross && 'zigbuild' || 'build' }} --release --locked --target ${{ matrix.target }}
 
       - name: Package
         id: package
