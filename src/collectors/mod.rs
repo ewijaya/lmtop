@@ -5,6 +5,7 @@
 
 pub mod claude;
 pub mod codex;
+mod codex_appserver;
 mod codex_db;
 pub mod custom;
 mod jsonl;

@@ -23,8 +23,14 @@ parsing extracts token counts and identifiers only.
 
 Disabled by default. When you enable it, and only then:
 
-- lmtop reads the **access token** the provider's own CLI already stores
-  locally (`~/.claude/.credentials.json` → `claudeAiOauth.accessToken`;
+- For Codex, lmtop first spawns a short-lived `codex app-server`
+  subprocess and asks it for rate limits over JSON-RPC. The CLI
+  authenticates itself with its own stored credentials — lmtop reads no
+  token at all on this path — and the subprocess is killed once the
+  response arrives.
+- Only when that is unavailable (or for Claude, always) does lmtop read
+  the **access token** the provider's own CLI already stores locally
+  (`~/.claude/.credentials.json` → `claudeAiOauth.accessToken`;
   `~/.codex/auth.json` → `tokens.access_token` and `tokens.account_id`).
 - The token is used for exactly one thing: the `Authorization` header of a
   GET request to that provider's own usage endpoint

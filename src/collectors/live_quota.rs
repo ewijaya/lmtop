@@ -139,11 +139,32 @@ impl LiveQuota {
     /// A newly fetched Codex usage response, normalized into the same
     /// `rate_limits` shape the rollout files carry. Returns `Some` only when
     /// a fetch actually happened, so callers ingest each sample exactly once.
+    ///
+    /// The Codex CLI's own app-server is asked first: it reports the same
+    /// numbers as the CLI's status panel, authenticates itself, and its
+    /// requests are not challenged by the usage endpoint's bot protection
+    /// the way third-party clients are. The direct HTTP endpoint remains
+    /// as a fallback for machines where the `codex` binary is missing.
     pub fn codex_rate_limits(&mut self, now: DateTime<Utc>) -> Option<Value> {
         if !self.due(now) {
             return None;
         }
+        self.last_attempt = Some(now);
+        let app_server_error = match super::codex_appserver::fetch_rate_limits() {
+            Ok(rate_limits) => {
+                self.last_value = Some((rate_limits.clone(), now));
+                self.last_error = None;
+                return Some(super::codex_appserver::normalize_app_server_rate_limits(
+                    &rate_limits,
+                ));
+            }
+            Err(e) => e,
+        };
         if !self.fetch(now, LiveProvider::Codex) {
+            // Both routes failed; report the app-server one first — it is
+            // the one the user can usually do something about.
+            let http_error = self.last_error.take().unwrap_or_default();
+            self.last_error = Some(format!("{app_server_error}; endpoint: {http_error}"));
             return None;
         }
         self.last_value

@@ -192,7 +192,24 @@ Claude exposes no local credit balance, so `credits` is never declared.
 - Everything in `~/.claude.json` other than `cachedUsageUtilization`.
 - Sidechain agent transcripts beyond their usage fields.
 
-## Live quota endpoints (opt-in, `network_quota = true` / `--live`)
+## Live quota (opt-in, `network_quota = true` / `--live`)
+
+For Codex, live quota is fetched by asking the Codex CLI itself first:
+lmtop spawns a short-lived `codex app-server` subprocess (JSON-RPC over
+stdio) and calls `account/rateLimits/read` — the same call behind the
+usage block in Codex's own status panel, so the numbers match it exactly
+(used percent, window duration, reset time, credits). The subprocess
+authenticates with its own stored credentials; lmtop reads no token on
+this path. It is killed as soon as the response arrives. This became the
+primary route when the HTTP usage endpoint's bot protection started
+challenging third-party TLS fingerprints outright (`cf-mitigated:
+challenge`, verified 2026-07-17) — impersonating a browser would be an
+arms race; asking the CLI is not.
+
+The direct HTTP endpoints below remain as fallbacks (for Codex, only
+when the `codex` binary is unavailable).
+
+## Live quota endpoints (fallback)
 
 The file-based sources above update only while the CLI runs *on this
 machine* — usage from another device, or simply time passing, is invisible

@@ -250,9 +250,13 @@ Honesty section — read this before trusting any number:
 - **A window whose reset time has passed is shown as *stale*** (the cached
   percentage describes a finished window, not the current one), never as a
   live value.
-- **Codex `--live` can be refused**: the usage endpoint sits behind bot
-  protection that occasionally answers 403. lmtop backs off, says so in
-  the health line, and falls back to the local snapshots.
+- **Codex `--live` asks the Codex CLI itself** (a short-lived
+  `codex app-server` subprocess), which reports exactly what Codex's own
+  status panel shows — the direct usage endpoint sits behind bot
+  protection that increasingly refuses third-party clients, and lmtop
+  will not play TLS-impersonation games. Without the `codex` binary it
+  falls back to that endpoint, and past that to local snapshots, saying
+  so in the health line.
 - **Observed tokens ≠ quota consumption.** Providers weight models, cached
   tokens, and request overhead differently and don't publish the formula.
 - **Burn velocity is an extrapolation** of the provider's own recent
