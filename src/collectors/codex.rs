@@ -364,8 +364,7 @@ impl CodexCollector {
                 .get(window_minutes)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let (burn_per_hour, projected_exhaustion) =
-                aggregation::project_quota(samples, ctx.now);
+            let projection = aggregation::project_quota(samples, ctx.now);
             windows.push(QuotaWindow {
                 kind: QuotaWindowKind::from_window_minutes(*window_minutes),
                 used_percent: latest.used_percent,
@@ -373,8 +372,9 @@ impl CodexCollector {
                 resets_at: latest.resets_at,
                 captured_at: latest.captured_at,
                 scope: None,
-                burn_per_hour,
-                projected_exhaustion,
+                burn_per_hour: projection.burn_per_hour,
+                projected_exhaustion: projection.projected_exhaustion,
+                trend_confidence: projection.confidence,
             });
         }
         windows

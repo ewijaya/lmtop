@@ -333,8 +333,7 @@ impl ClaudeCollector {
                     samples.drain(..excess);
                 }
             }
-            let (burn_per_hour, projected_exhaustion) =
-                aggregation::project_quota(samples, ctx.now);
+            let projection = aggregation::project_quota(samples, ctx.now);
             windows.push(QuotaWindow {
                 kind: rw.kind,
                 used_percent: rw.percent,
@@ -342,8 +341,9 @@ impl ClaudeCollector {
                 resets_at: rw.resets_at,
                 captured_at,
                 scope: rw.scope,
-                burn_per_hour,
-                projected_exhaustion,
+                burn_per_hour: projection.burn_per_hour,
+                projected_exhaustion: projection.projected_exhaustion,
+                trend_confidence: projection.confidence,
             });
         }
         windows

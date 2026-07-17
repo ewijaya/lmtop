@@ -1,6 +1,6 @@
 # Architecture
 
-`agentop` is a local-first terminal dashboard that monitors Codex CLI and
+`lmtop` is a local-first terminal dashboard that monitors Codex CLI and
 Claude Code usage. The design has one central rule: **provider collection is
 completely separate from rendering.** The UI depends only on normalized
 domain types; nothing outside a collector ever sees a provider schema.

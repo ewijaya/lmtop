@@ -166,10 +166,7 @@ mod tests {
 
     #[test]
     fn project_name_takes_basename() {
-        assert_eq!(
-            project_name("/home/u/projects/agentop"),
-            Some("agentop".into())
-        );
+        assert_eq!(project_name("/home/u/projects/lmtop"), Some("lmtop".into()));
         assert_eq!(project_name("C:\\Users\\u\\code\\app"), Some("app".into()));
         assert_eq!(project_name("/"), None);
     }

@@ -33,15 +33,24 @@ fn outlook_span<'a>(w: &QuotaWindow, theme: &Theme, now: chrono::DateTime<Utc>) 
                     .num_seconds(),
             );
             Span::styled(
-                format!(" {warn} empty ~{eta}"),
+                format!(" {warn} empty ~{eta}{}", confidence_suffix(w)),
                 Style::default().fg(theme.gauge_color(95.0)),
             )
         }
         QuotaOutlook::Lasts => Span::styled(
-            format!(" {ok} lasts"),
+            format!(" {ok} lasts{}", confidence_suffix(w)),
             Style::default().fg(theme.gauge_color(0.0)),
         ),
         QuotaOutlook::Unknown => Span::styled(" · trend n/a".to_string(), theme.dim()),
+    }
+}
+
+/// Compact confidence marker for a projection, e.g. "·med". Estimates are
+/// always labeled with how much the trend can be trusted.
+fn confidence_suffix(w: &QuotaWindow) -> String {
+    match w.trend_confidence {
+        Some(c) => format!("·{}", c.short_label()),
+        None => String::new(),
     }
 }
 

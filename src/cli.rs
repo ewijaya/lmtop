@@ -10,9 +10,9 @@ use color_eyre::eyre::Result;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
-/// A btop-style terminal dashboard for Codex CLI and Claude Code usage.
-/// Local-first: reads session metadata from disk, never prompt content,
-/// and requires no API keys.
+/// lmtop — a live terminal monitor for language-model usage, quotas, and
+/// subscription capacity. Local-first: reads session metadata from disk,
+/// never prompt content, and requires no API keys.
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Cli {
@@ -180,21 +180,28 @@ fn render_snapshot_text(snapshot: &UsageSnapshot) -> String {
                 .map(|t| {
                     format!(
                         ", resets {}",
-                        t.with_timezone(&chrono::Local).format("%m-%d %H:%M")
+                        t.with_timezone(&chrono::Local).format("%m-%d %H:%M %Z")
                     )
                 })
+                .unwrap_or_default();
+            let confidence = w
+                .trend_confidence
+                .map(|c| format!(" (confidence: {})", c.label()))
                 .unwrap_or_default();
             let outlook = match w.outlook() {
                 crate::domain::QuotaOutlook::Exhausted => " — EXHAUSTED".to_string(),
                 crate::domain::QuotaOutlook::AtRisk {
                     projected_exhaustion,
                 } => format!(
-                    " — AT RISK: projected empty {}",
+                    " — AT RISK: projected empty {}{}",
                     projected_exhaustion
                         .with_timezone(&chrono::Local)
-                        .format("%m-%d %H:%M")
+                        .format("%m-%d %H:%M %Z"),
+                    confidence
                 ),
-                crate::domain::QuotaOutlook::Lasts => " — lasts to reset".to_string(),
+                crate::domain::QuotaOutlook::Lasts => {
+                    format!(" — lasts to reset{confidence}")
+                }
                 crate::domain::QuotaOutlook::Unknown => String::new(),
             };
             let burn = w
@@ -210,7 +217,7 @@ fn render_snapshot_text(snapshot: &UsageSnapshot) -> String {
                     " [as of {}]",
                     w.captured_at
                         .with_timezone(&chrono::Local)
-                        .format("%m-%d %H:%M")
+                        .format("%m-%d %H:%M %Z")
                 )
             } else {
                 String::new()

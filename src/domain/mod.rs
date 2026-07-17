@@ -10,7 +10,7 @@ mod snapshot;
 mod tokens;
 
 pub use model::{ModelFamily, ModelIdentity};
-pub use quota::{Credits, QuotaOutlook, QuotaWindow, QuotaWindowKind};
+pub use quota::{Credits, QuotaOutlook, QuotaWindow, QuotaWindowKind, TrendConfidence};
 pub use session::{SessionState, SessionUsage};
 pub use snapshot::{
     Capability, CollectorHealth, CollectorStatus, Freshness, HistorySample, ModelWeekUsage,

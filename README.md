@@ -1,19 +1,27 @@
-# agentop
+# lmtop
 
-> **Naming note:** `agentop` is a temporary internal codename. The package,
-> binary, and docs are structured for a clean rename (see `src/branding.rs`).
+**lmtop is a live terminal monitor for language-model usage, quotas, and
+subscription capacity.**
 
-A fast, local-first terminal dashboard for monitoring **Codex CLI** and
-**Claude Code** usage — `btop`, but for AI coding agents.
+lmtop ("language-model top", lowercase like `top`, `htop`, and `btop`) is a
+Rust/Ratatui terminal dashboard for monitoring usage, rate limits, rolling
+quota windows, reset times, burn velocity, and projected exhaustion across
+AI coding agents such as OpenAI Codex and Claude Code. It is designed
+especially for users on flat-rate subscription plans rather than API-only
+billing.
 
-Built for people on **flat-rate ChatGPT/Codex and Claude subscriptions**
-who need capacity planning, not billing: How much of my 5-hour window is
-left? Will my weekly quota survive until it resets? Which model is eating
-my week?
+Most tools in this space are token-cost trackers (what did my API usage
+cost?) or process inspectors (what is running?). lmtop answers a different
+question — **subscription capacity planning**:
+
+- **How much subscription capacity remains?**
+- **When does each quota reset?**
+- **How quickly is capacity being consumed?**
+- **Am I likely to exhaust it before the reset?**
 
 ```text
 ┌─ CODEX ────────────────────────────┬─ CLAUDE ───────────────────────────┐
-│ 5h      ██████████░░░  67.0% ↻2h05m ⚠ empty ~1h40m                      │
+│ 5h      ██████████░░░  67.0% ↻2h05m ⚠ empty ~1h40m (high)               │
 │ Weekly  █████░░░░░░░░  39.2% ↻3d 4h ✓ lasts                             │
 │ Credits 188                        │ Weekly (Fable) ████████░░░  52%    │
 │ Observed session 1.2M · week 45.6M │ Observed session 890k · week 12.3M │
@@ -27,6 +35,9 @@ my week?
 ```
 
 *(screenshot placeholder — real capture pending)*
+
+> lmtop is an independent open-source project. It is not affiliated with,
+> sponsored by, or endorsed by OpenAI or Anthropic.
 
 ## What it shows
 
@@ -75,25 +86,25 @@ Unavailable capabilities are shown as *unavailable*, never invented. See
 Stable Rust required ([rustup](https://rustup.rs)):
 
 ```bash
-git clone <repo-url>
-cd agentop
+git clone https://github.com/ewijaya/lmtop
+cd lmtop
 cargo build --release
-./target/release/agentop
+./target/release/lmtop
 ```
 
 ## Usage
 
 ```bash
-agentop                     # combined dashboard
-agentop --provider codex    # Codex only
-agentop --provider claude   # Claude only
-agentop --offline           # never touch the network
-agentop --refresh 5         # rescan every 5 seconds
-agentop --ascii             # ASCII bars/charts
-agentop snapshot            # one-shot text summary (non-interactive)
-agentop snapshot --json     # machine-readable snapshot
-agentop doctor              # discovery, parse health, capabilities
-agentop --version
+lmtop                     # combined dashboard
+lmtop --provider codex    # Codex only
+lmtop --provider claude   # Claude only
+lmtop --offline           # never touch the network
+lmtop --refresh 5         # rescan every 5 seconds
+lmtop --ascii             # ASCII bars/charts
+lmtop snapshot            # one-shot text summary (non-interactive)
+lmtop snapshot --json     # machine-readable snapshot
+lmtop doctor              # discovery, parse health, capabilities
+lmtop --version
 ```
 
 ## Keyboard shortcuts

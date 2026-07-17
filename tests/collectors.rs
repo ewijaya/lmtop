@@ -1,11 +1,12 @@
 //! Integration tests: whole collectors driven over synthetic fixtures with
 //! a deterministic clock. No real session data is used.
 
-use agentop::collectors::{Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector};
-use agentop::domain::{
-    Capability, CollectorStatus, ModelFamily, Provider, QuotaOutlook, QuotaWindowKind,
-};
 use chrono::{DateTime, Utc};
+use lmtop::collectors::{Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector};
+use lmtop::domain::{
+    Capability, CollectorStatus, ModelFamily, Provider, QuotaOutlook, QuotaWindowKind,
+    TrendConfidence,
+};
 use std::path::PathBuf;
 
 /// Deterministic clock: Friday 2026-07-17 12:00 UTC, week (Monday start,
@@ -123,6 +124,10 @@ fn codex_burn_velocity_and_exhaustion_projection() {
     // Monday reset.
     let weekly = snap.quota_window(&QuotaWindowKind::Weekly).unwrap();
     assert_eq!(weekly.outlook(), QuotaOutlook::Lasts);
+    // Trend: 3 samples spanning 55 min, 10 min old -> medium confidence,
+    // and the estimate is always labeled with it.
+    assert_eq!(five.trend_confidence, Some(TrendConfidence::Medium));
+    assert_eq!(weekly.trend_confidence, Some(TrendConfidence::Medium));
 }
 
 #[test]
@@ -135,6 +140,7 @@ fn codex_stale_quota_trend_yields_no_projection() {
     assert!((five.used_percent - 30.0).abs() < 1e-9);
     assert_eq!(five.burn_per_hour, None);
     assert_eq!(five.projected_exhaustion, None);
+    assert_eq!(five.trend_confidence, None);
     assert_eq!(five.outlook(), QuotaOutlook::Unknown);
 }
 
@@ -381,7 +387,7 @@ fn rescan_without_changes_adds_nothing() {
 fn codex_incremental_ingestion_of_growing_file() {
     // Simulate a live session: scan, let the file grow (including a
     // partial trailing line), scan again. Only new complete lines count.
-    let dir = std::env::temp_dir().join(format!("agentop-inc-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("lmtop-inc-test-{}", std::process::id()));
     let session_dir = dir.join("sessions/2026/07/17");
     std::fs::create_dir_all(&session_dir).unwrap();
     let path = session_dir.join("rollout-2026-07-17T10-00-00-live.jsonl");

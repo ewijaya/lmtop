@@ -7,12 +7,11 @@ optional; the file only needs to exist if you want to change a default.
 
 | Platform | Path |
 |---|---|
-| Linux / WSL | `~/.config/agentop/config.toml` |
-| macOS | `~/Library/Application Support/agentop/config.toml` |
-| Windows | `%APPDATA%\agentop\config\config.toml` |
+| Linux / WSL | `~/.config/lmtop/config.toml` |
+| macOS | `~/Library/Application Support/lmtop/config.toml` |
+| Windows | `%APPDATA%\lmtop\config\config.toml` |
 
-(Directory name follows the binary name; run `doctor` to see the exact
-path on your machine.) An alternate file can be passed with
+(Run `lmtop doctor` to see the exact path on your machine.) An alternate file can be passed with
 `--config <path>`.
 
 ## Full reference (defaults shown)

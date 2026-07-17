@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn reads_incrementally_and_skips_partial_line() {
-        let dir = std::env::temp_dir().join(format!("agentop-jsonl-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lmtop-jsonl-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.jsonl");
 

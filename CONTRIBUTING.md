@@ -1,8 +1,8 @@
 # Contributing
 
-> **Note:** the current package name is a temporary internal codename. Keep
-> new name references going through `src/branding.rs` (code) or the package
-> name (docs) so the eventual rename stays a small diff.
+> **Naming:** the product name is `lmtop`, always lowercase (like `top`,
+> `htop`, `btop`). Keep name references in code going through
+> `src/branding.rs`.
 
 ## Development setup
 

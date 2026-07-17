@@ -60,6 +60,53 @@ pub struct QuotaWindow {
     /// `burn_per_hour` from the latest report. `None` when the burn rate is
     /// unknown or (effectively) zero.
     pub projected_exhaustion: Option<DateTime<Utc>>,
+    /// Confidence grade of the burn trend, present whenever
+    /// `burn_per_hour` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trend_confidence: Option<TrendConfidence>,
+}
+
+/// How much to trust a burn-velocity trend, graded from how many samples
+/// the current monotonic run has, how long it spans, and how fresh its
+/// newest sample is. Displayed alongside every projection so estimates are
+/// never mistaken for provider-reported facts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrendConfidence {
+    Low,
+    Medium,
+    High,
+}
+
+impl TrendConfidence {
+    /// Grade a trend: High needs a well-populated, long, fresh run;
+    /// Medium a moderate one; anything that met the minimum bar is Low.
+    pub fn grade(run_samples: usize, span_minutes: f64, age_minutes: i64) -> TrendConfidence {
+        if run_samples >= 5 && span_minutes >= 30.0 && age_minutes <= 10 {
+            TrendConfidence::High
+        } else if run_samples >= 3 && span_minutes >= 10.0 && age_minutes <= 20 {
+            TrendConfidence::Medium
+        } else {
+            TrendConfidence::Low
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TrendConfidence::Low => "low",
+            TrendConfidence::Medium => "medium",
+            TrendConfidence::High => "high",
+        }
+    }
+
+    /// Compact form for tight TUI rows.
+    pub fn short_label(self) -> &'static str {
+        match self {
+            TrendConfidence::Low => "low",
+            TrendConfidence::Medium => "med",
+            TrendConfidence::High => "high",
+        }
+    }
 }
 
 /// Capacity-planning verdict: will this window run out before it resets?
@@ -167,6 +214,7 @@ mod tests {
             scope: None,
             burn_per_hour: burn,
             projected_exhaustion: exhaustion.map(|s| s.parse().unwrap()),
+            trend_confidence: burn.map(|_| TrendConfidence::Medium),
         }
     }
 
@@ -208,6 +256,15 @@ mod tests {
     fn zero_burn_with_reset_lasts() {
         let w = window(50.0, None, Some("2026-07-17T14:00:00Z"), Some(0.0));
         assert_eq!(w.outlook(), QuotaOutlook::Lasts);
+    }
+
+    #[test]
+    fn confidence_grading() {
+        assert_eq!(TrendConfidence::grade(6, 45.0, 5), TrendConfidence::High);
+        assert_eq!(TrendConfidence::grade(3, 12.0, 15), TrendConfidence::Medium);
+        assert_eq!(TrendConfidence::grade(2, 5.0, 25), TrendConfidence::Low);
+        // Many samples but stale -> not High.
+        assert_eq!(TrendConfidence::grade(9, 60.0, 25), TrendConfidence::Low);
     }
 
     #[test]

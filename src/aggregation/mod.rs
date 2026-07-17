@@ -165,28 +165,36 @@ pub struct QuotaSample {
 /// from a session that ended hours ago say nothing about what happens next.
 const QUOTA_TREND_MAX_AGE_MINUTES: i64 = 30;
 
-/// Estimate burn velocity (percentage points per hour) and projected
-/// exhaustion for a quota window from a series of provider-reported
-/// percentage samples.
+/// Burn/exhaustion estimate for one quota window. Every field is optional:
+/// absent means "not enough observations", never "zero".
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct QuotaProjection {
+    /// Percentage points per hour over the current monotonic run.
+    pub burn_per_hour: Option<f64>,
+    /// Extrapolated instant the window reaches 100%.
+    pub projected_exhaustion: Option<DateTime<Utc>>,
+    /// How much to trust the trend, from sample count, span, and freshness.
+    pub confidence: Option<crate::domain::TrendConfidence>,
+}
+
+/// Estimate burn velocity (percentage points per hour), projected
+/// exhaustion, and trend confidence for a quota window from a series of
+/// provider-reported percentage samples.
 ///
 /// Only the most recent monotonically non-decreasing run of samples is
 /// used: a drop in `used_percent` means the window rolled over or reset,
 /// and mixing pre-reset samples into the trend would corrupt the estimate.
 /// Stale trends (latest sample older than ~30 minutes) yield no estimate
 /// at all — extrapolating an old burn rate would fabricate a forecast.
-/// Returns `(burn_per_hour, projected_exhaustion)`.
-pub fn project_quota(
-    samples: &[QuotaSample],
-    now: DateTime<Utc>,
-) -> (Option<f64>, Option<DateTime<Utc>>) {
+pub fn project_quota(samples: &[QuotaSample], now: DateTime<Utc>) -> QuotaProjection {
     let mut sorted: Vec<&QuotaSample> = samples.iter().collect();
     sorted.sort_by_key(|s| s.captured_at);
     let Some(last) = sorted.last() else {
-        return (None, None);
+        return QuotaProjection::default();
     };
-    if now.signed_duration_since(last.captured_at) > Duration::minutes(QUOTA_TREND_MAX_AGE_MINUTES)
-    {
-        return (None, None);
+    let age_minutes = now.signed_duration_since(last.captured_at).num_minutes();
+    if age_minutes > QUOTA_TREND_MAX_AGE_MINUTES {
+        return QuotaProjection::default();
     }
 
     // Walk backwards while the percentage is non-increasing (going back in
@@ -197,18 +205,28 @@ pub fn project_quota(
     }
     let run = &sorted[start..];
     let first = run[0];
-    let span_hours = last
+    let span_minutes = last
         .captured_at
         .signed_duration_since(first.captured_at)
         .num_seconds() as f64
-        / 3600.0;
+        / 60.0;
     // Need a meaningful baseline: at least two samples a few minutes apart.
-    if run.len() < 2 || span_hours < 0.05 {
-        return (None, None);
+    if run.len() < 2 || span_minutes < 3.0 {
+        return QuotaProjection::default();
     }
+    let confidence = Some(crate::domain::TrendConfidence::grade(
+        run.len(),
+        span_minutes,
+        age_minutes,
+    ));
+    let span_hours = span_minutes / 60.0;
     let burn = (last.used_percent - first.used_percent) / span_hours;
     if burn <= f64::EPSILON {
-        return (Some(0.0), None);
+        return QuotaProjection {
+            burn_per_hour: Some(0.0),
+            projected_exhaustion: None,
+            confidence,
+        };
     }
     let remaining = (100.0 - last.used_percent).max(0.0);
     let hours_left = remaining / burn;
@@ -216,7 +234,11 @@ pub fn project_quota(
     // never projects exhaustion into the past.
     let base = last.captured_at.max(now);
     let exhaustion = base + Duration::seconds((hours_left * 3600.0) as i64);
-    (Some(burn), Some(exhaustion))
+    QuotaProjection {
+        burn_per_hour: Some(burn),
+        projected_exhaustion: Some(exhaustion),
+        confidence,
+    }
 }
 
 #[cfg(test)]
@@ -365,12 +387,14 @@ mod tests {
             sample("2026-07-17T11:00:00Z", 40.0),
             sample("2026-07-17T12:00:00Z", 50.0),
         ];
-        let (burn, exhaustion) = project_quota(&samples, now);
-        assert!((burn.unwrap() - 10.0).abs() < 1e-9);
+        let p = project_quota(&samples, now);
+        assert!((p.burn_per_hour.unwrap() - 10.0).abs() < 1e-9);
         assert_eq!(
-            exhaustion.unwrap(),
+            p.projected_exhaustion.unwrap(),
             "2026-07-17T17:00:00Z".parse::<DateTime<Utc>>().unwrap()
         );
+        // 3 samples over 2h, fresh -> not enough samples for High.
+        assert_eq!(p.confidence, Some(crate::domain::TrendConfidence::Medium));
     }
 
     #[test]
@@ -383,16 +407,16 @@ mod tests {
             sample("2026-07-17T11:00:00Z", 5.0),
             sample("2026-07-17T12:00:00Z", 15.0),
         ];
-        let (burn, _) = project_quota(&samples, now);
-        assert!((burn.unwrap() - 10.0).abs() < 1e-9);
+        let p = project_quota(&samples, now);
+        assert!((p.burn_per_hour.unwrap() - 10.0).abs() < 1e-9);
     }
 
     #[test]
     fn quota_projection_needs_two_samples() {
         let now: DateTime<Utc> = "2026-07-17T12:00:00Z".parse().unwrap();
-        assert_eq!(project_quota(&[], now), (None, None));
+        assert_eq!(project_quota(&[], now), QuotaProjection::default());
         let one = vec![sample("2026-07-17T12:00:00Z", 40.0)];
-        assert_eq!(project_quota(&one, now), (None, None));
+        assert_eq!(project_quota(&one, now), QuotaProjection::default());
     }
 
     #[test]
@@ -402,9 +426,9 @@ mod tests {
             sample("2026-07-17T10:00:00Z", 40.0),
             sample("2026-07-17T12:00:00Z", 40.0),
         ];
-        let (burn, exhaustion) = project_quota(&samples, now);
-        assert_eq!(burn, Some(0.0));
-        assert_eq!(exhaustion, None);
+        let p = project_quota(&samples, now);
+        assert_eq!(p.burn_per_hour, Some(0.0));
+        assert_eq!(p.projected_exhaustion, None);
     }
 
     #[test]
@@ -416,7 +440,7 @@ mod tests {
             sample("2026-07-17T08:00:00Z", 98.0),
             sample("2026-07-17T09:00:00Z", 99.0),
         ];
-        assert_eq!(project_quota(&samples, now), (None, None));
+        assert_eq!(project_quota(&samples, now), QuotaProjection::default());
     }
 
     #[test]
@@ -426,8 +450,8 @@ mod tests {
             sample("2026-07-17T11:00:00Z", 98.0),
             sample("2026-07-17T12:00:00Z", 99.9),
         ];
-        let (_, exhaustion) = project_quota(&samples, now);
-        assert!(exhaustion.unwrap() >= now);
+        let p = project_quota(&samples, now);
+        assert!(p.projected_exhaustion.unwrap() >= now);
     }
 
     #[test]
