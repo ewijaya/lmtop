@@ -222,9 +222,7 @@ impl AlertEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{
-        CollectorHealth, CollectorStatus, Provider, QuotaWindow, QuotaWindowKind,
-    };
+    use crate::domain::{CollectorHealth, CollectorStatus, Provider, QuotaWindow, QuotaWindowKind};
 
     fn snapshot(windows: Vec<QuotaWindow>) -> ProviderSnapshot {
         let mut s = ProviderSnapshot::empty(

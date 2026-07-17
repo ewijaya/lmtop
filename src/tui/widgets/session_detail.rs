@@ -48,9 +48,7 @@ pub fn render_session_detail(
                 .fg(theme.provider(session.provider))
                 .add_modifier(Modifier::BOLD),
         ))
-        .title_bottom(
-            Line::from(Span::styled(" Enter/Esc close ", theme.dim())).right_aligned(),
-        );
+        .title_bottom(Line::from(Span::styled(" Enter/Esc close ", theme.dim())).right_aligned());
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
 
@@ -88,11 +86,21 @@ pub fn render_session_detail(
     // Timing.
     let started = session
         .started_at
-        .map(|t| format!("{} ago", fmt_age(now.signed_duration_since(t).num_seconds())))
+        .map(|t| {
+            format!(
+                "{} ago",
+                fmt_age(now.signed_duration_since(t).num_seconds())
+            )
+        })
         .unwrap_or_else(|| "-".into());
     let last = session
         .last_activity
-        .map(|t| format!("{} ago", fmt_age(now.signed_duration_since(t).num_seconds())))
+        .map(|t| {
+            format!(
+                "{} ago",
+                fmt_age(now.signed_duration_since(t).num_seconds())
+            )
+        })
         .unwrap_or_else(|| "-".into());
     let duration = match (session.started_at, session.last_activity) {
         (Some(s), Some(l)) if l > s => fmt_age(l.signed_duration_since(s).num_seconds()),
@@ -130,7 +138,11 @@ pub fn render_session_detail(
                     Style::default().fg(theme.gauge_color(pct)),
                 ),
                 Span::styled(
-                    format!(" {pct:.0}% ({} of {})", fmt_tokens(used), fmt_tokens(window)),
+                    format!(
+                        " {pct:.0}% ({} of {})",
+                        fmt_tokens(used),
+                        fmt_tokens(window)
+                    ),
                     theme.text(),
                 ),
             ]));
@@ -189,10 +201,7 @@ pub fn render_session_detail(
             name.truncate(16);
             lines.push(Line::from(vec![
                 Span::styled(format!("  {name:<16}"), Style::default().fg(color)),
-                Span::styled(
-                    bar(bar_width, pct, theme.ascii),
-                    Style::default().fg(color),
-                ),
+                Span::styled(bar(bar_width, pct, theme.ascii), Style::default().fg(color)),
                 Span::styled(
                     format!(" {:>6} {pct:>4.0}%", fmt_tokens(tokens.total())),
                     theme.text(),

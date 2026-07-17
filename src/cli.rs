@@ -2,8 +2,7 @@
 
 use crate::app::{App, View};
 use crate::collectors::{
-    Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector,
-    custom::CustomCollector,
+    Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector, custom::CustomCollector,
 };
 use crate::config::Config;
 use crate::domain::{Provider, UsageSnapshot};
@@ -385,7 +384,10 @@ fn render_line(snapshot: &UsageSnapshot, color: bool, now: chrono::DateTime<Utc>
             }
             fields.push(format!(
                 "{label} {}",
-                paint(pct_color(w.used_percent), &format!("{:.0}%", w.used_percent))
+                paint(
+                    pct_color(w.used_percent),
+                    &format!("{:.0}%", w.used_percent)
+                )
             ));
             match w.outlook() {
                 QuotaOutlook::Exhausted => {

@@ -215,10 +215,7 @@ impl App {
                     || s.model
                         .as_ref()
                         .is_some_and(|m| m.display.to_lowercase().contains(&needle))
-                    || s.provider
-                        .display_name()
-                        .to_lowercase()
-                        .contains(&needle)
+                    || s.provider.display_name().to_lowercase().contains(&needle)
             })
             .collect();
         match self.sort {
@@ -246,7 +243,9 @@ impl App {
     /// The session under the cursor, if any.
     pub fn cursor_session(&self) -> Option<&crate::domain::SessionUsage> {
         let sessions = self.visible_sessions();
-        sessions.get(self.session_cursor.min(sessions.len().saturating_sub(1))).copied()
+        sessions
+            .get(self.session_cursor.min(sessions.len().saturating_sub(1)))
+            .copied()
     }
 
     /// The session shown in the detail overlay.

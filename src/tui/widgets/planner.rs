@@ -179,7 +179,10 @@ pub fn render_planner(
                 ));
                 match w.outlook() {
                     QuotaOutlook::Exhausted => {
-                        spans.push(Span::styled("✗ exhausted", Style::default().fg(theme.bad())));
+                        spans.push(Span::styled(
+                            "✗ exhausted",
+                            Style::default().fg(theme.bad()),
+                        ));
                     }
                     QuotaOutlook::AtRisk {
                         projected_exhaustion,
@@ -200,9 +203,8 @@ pub fn render_planner(
                         ));
                     }
                     QuotaOutlook::Lasts => {
-                        let at_reset = (w.used_percent
-                            + burn * hours_left)
-                            .clamp(w.used_percent, 100.0);
+                        let at_reset =
+                            (w.used_percent + burn * hours_left).clamp(w.used_percent, 100.0);
                         spans.push(Span::styled(
                             format!("✓ lasts — ~{at_reset:.0}% at reset"),
                             Style::default().fg(theme.good()),

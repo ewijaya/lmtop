@@ -217,11 +217,7 @@ fn render_quota(
         // Group persisted points per window identity.
         let mut grouped: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
         for q in history.quota_series(*provider, start, end) {
-            let key = format!(
-                "{}|{}",
-                q.kind.label(),
-                q.scope.clone().unwrap_or_default()
-            );
+            let key = format!("{}|{}", q.kind.label(), q.scope.clone().unwrap_or_default());
             let x = -end.signed_duration_since(q.at).num_seconds() as f64 / 60.0;
             grouped.entry(key).or_default().push((x, q.used_percent));
         }
@@ -229,11 +225,7 @@ fn render_quota(
         if let Some(snap) = snap {
             for w in &snap.quota_windows {
                 if w.captured_at >= start && w.captured_at < end && !w.is_expired(now) {
-                    let key = format!(
-                        "{}|{}",
-                        w.kind.label(),
-                        w.scope.clone().unwrap_or_default()
-                    );
+                    let key = format!("{}|{}", w.kind.label(), w.scope.clone().unwrap_or_default());
                     let x = -end.signed_duration_since(w.captured_at).num_seconds() as f64 / 60.0;
                     let pts = grouped.entry(key).or_default();
                     if pts.last().is_none_or(|p| p.0 < x) {

@@ -191,11 +191,8 @@ fn panel_rects(app: &App, area: Rect) -> Vec<(Panel, Rect)> {
     match app.view {
         View::Combined => {
             let l = layout::combined(area, app.enabled_providers.len().max(1));
-            let mut rects: Vec<(Panel, Rect)> = l
-                .providers
-                .iter()
-                .map(|r| (Panel::Providers, *r))
-                .collect();
+            let mut rects: Vec<(Panel, Rect)> =
+                l.providers.iter().map(|r| (Panel::Providers, *r)).collect();
             rects.extend([
                 (Panel::Rate, l.rate_chart),
                 (Panel::Sessions, l.sessions),
@@ -308,7 +305,9 @@ fn draw_combined(frame: &mut Frame, app: &App, theme: &Theme, now: chrono::DateT
     let l = layout::combined(frame.area(), app.enabled_providers.len().max(1));
     widgets::render_header(frame, l.header, app, theme, now);
     for (i, provider) in app.enabled_providers.iter().enumerate() {
-        let Some(rect) = l.providers.get(i) else { break };
+        let Some(rect) = l.providers.get(i) else {
+            break;
+        };
         widgets::render_provider_panel(
             frame,
             *rect,
@@ -426,7 +425,9 @@ fn draw_planner(frame: &mut Frame, app: &App, theme: &Theme, now: chrono::DateTi
     let l = layout::planner(frame.area(), app.enabled_providers.len().max(1));
     widgets::render_header(frame, l.header, app, theme, now);
     for (i, provider) in app.enabled_providers.iter().enumerate() {
-        let Some(rect) = l.providers.get(i) else { break };
+        let Some(rect) = l.providers.get(i) else {
+            break;
+        };
         widgets::render_planner(
             frame,
             *rect,

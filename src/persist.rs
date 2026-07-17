@@ -112,7 +112,11 @@ impl HistoryStore {
     fn absorb(&mut self, entry: HistoryEntry) {
         match entry {
             HistoryEntry::Rate { at, p, input, out } => {
-                self.providers.entry(p).or_default().rate.insert(at, (input, out));
+                self.providers
+                    .entry(p)
+                    .or_default()
+                    .rate
+                    .insert(at, (input, out));
             }
             HistoryEntry::Quota {
                 at,
@@ -172,9 +176,7 @@ impl HistoryStore {
     /// value changed since the last persisted point for that window.
     pub fn record(&mut self, snap: &ProviderSnapshot, now: DateTime<Utc>) {
         let mut new_entries: Vec<HistoryEntry> = Vec::new();
-        let current_minute = now
-            .duration_trunc(Duration::minutes(1))
-            .unwrap_or(now);
+        let current_minute = now.duration_trunc(Duration::minutes(1)).unwrap_or(now);
         {
             let ph = self.providers.entry(snap.provider).or_default();
             let last_rate = ph.rate.keys().next_back().copied();

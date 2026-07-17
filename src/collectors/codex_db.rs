@@ -59,7 +59,8 @@ pub fn threads_since(db_path: &Path, since: DateTime<Utc>) -> Option<Vec<ThreadR
     )
     .ok()?;
     // Never wait on the CLI's write locks.
-    conn.busy_timeout(std::time::Duration::from_millis(100)).ok()?;
+    conn.busy_timeout(std::time::Duration::from_millis(100))
+        .ok()?;
     let mut stmt = conn
         .prepare(
             "SELECT id, cwd, model, tokens_used, created_at, updated_at \

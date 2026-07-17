@@ -194,9 +194,9 @@ mod tests {
     fn footer_keys_never_collide_with_freshness() {
         for width in [60u16, 80, 100, 110, 120, 140, 160, 200] {
             let row = footer_row(width);
-            let freshness_start = row.find("Codex fresh").unwrap_or_else(|| {
-                panic!("width {width}: freshness missing entirely: {row:?}")
-            });
+            let freshness_start = row
+                .find("Codex fresh")
+                .unwrap_or_else(|| panic!("width {width}: freshness missing entirely: {row:?}"));
             // Whatever precedes the freshness block must be blank padding,
             // not a key hint sliced in half.
             assert!(
