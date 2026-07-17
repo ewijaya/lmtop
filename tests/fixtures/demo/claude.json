@@ -1,0 +1,53 @@
+{
+ "cachedUsageUtilization": {
+  "fetchedAtMs": 1784273123000,
+  "utilization": {
+   "five_hour": {
+    "utilization": 61,
+    "resets_at": "2026-07-17T10:38:23.000000+00:00",
+    "limit_dollars": null,
+    "used_dollars": null
+   },
+   "seven_day": {
+    "utilization": 35,
+    "resets_at": "2026-07-20T12:27:23.000000+00:00"
+   },
+   "seven_day_opus": null,
+   "limits": [
+    {
+     "kind": "session",
+     "group": "session",
+     "percent": 61,
+     "severity": "ok",
+     "resets_at": "2026-07-17T10:38:23.000000+00:00",
+     "scope": null,
+     "is_active": true
+    },
+    {
+     "kind": "weekly_all",
+     "group": "weekly",
+     "percent": 35,
+     "severity": "ok",
+     "resets_at": "2026-07-20T12:27:23.000000+00:00",
+     "scope": null,
+     "is_active": false
+    },
+    {
+     "kind": "weekly_scoped",
+     "group": "weekly",
+     "percent": 52,
+     "severity": "warning",
+     "resets_at": "2026-07-20T12:27:23.000000+00:00",
+     "scope": {
+      "model": {
+       "id": null,
+       "display_name": "Fable"
+      },
+      "surface": null
+     },
+     "is_active": true
+    }
+   ]
+  }
+ }
+}
