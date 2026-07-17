@@ -174,6 +174,7 @@ from session metadata and nothing else. Full model: `docs/privacy.md`.
 - `docs/data-sources.md` — exact provider schemas consumed
 - `docs/privacy.md` — the privacy contract
 - `docs/configuration.md` — config file reference
+- `docs/releasing.md` — how releases and the Homebrew tap are published
 - `CONTRIBUTING.md` — development guide
 
 ## License

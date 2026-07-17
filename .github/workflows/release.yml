@@ -109,20 +109,21 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
 
-  # Bumps the formula in the tap repo. Requires a TAP_GITHUB_TOKEN secret with
-  # write access to ewijaya/homebrew-tap; skipped when absent so the release
-  # itself still succeeds.
+  # Bumps the formula in the tap repo, authenticating with a deploy key that
+  # grants write access to ewijaya/homebrew-tap and nothing else (a PAT would
+  # carry rights over every repo on the account). Skipped with a warning when
+  # the secret is absent, so a release never fails on the tap step.
   bump-tap:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Check for tap token
+      - name: Check for tap deploy key
         id: check
         run: |
-          if [ -n "${{ secrets.TAP_GITHUB_TOKEN }}" ]; then
+          if [ -n "${{ secrets.TAP_DEPLOY_KEY }}" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::TAP_GITHUB_TOKEN not set; skipping Homebrew formula bump."
+            echo "::warning::TAP_DEPLOY_KEY not set; skipping Homebrew formula bump."
             echo "ok=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -136,7 +137,7 @@ jobs:
         if: steps.check.outputs.ok == 'true'
         with:
           repository: ewijaya/homebrew-tap
-          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
           path: tap
 
       - name: Update formula
