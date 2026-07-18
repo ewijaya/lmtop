@@ -203,7 +203,8 @@ m        Focus model breakdown   +/-    Zoom chart window
 w        Focus weekly usage      0      Back to the live edge
 h        Focus history chart     r      Refresh now
 p        Pause collectors        ?      Help
-q        Quit                    Esc    Close / clear / quit
+t / T    Next / previous theme   Esc    Close / clear / quit
+q        Quit
 ```
 
 The mouse works too: click to focus a panel, click a session to select it
@@ -265,6 +266,11 @@ shows `·256` or `·16` beside the theme name when depth is degraded.
 **Over SSH**, `COLORTERM` is not forwarded, so a truecolor terminal
 usually detects as 256 — set `color_depth = "truecolor"` in `[ui]` to
 force it.
+
+The chart's drawing symbol is configurable independently:
+`graph_symbol = "braille"` (default, highest resolution), `"block"`
+(broader font compatibility), or `"tty"` (maximum terminal
+compatibility) in `[ui]`.
 
 ## Custom providers
 
