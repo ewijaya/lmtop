@@ -9,6 +9,21 @@ readme = "README.md"
 keywords = ["tui", "monitoring", "codex", "claude", "usage"]
 categories = ["command-line-utilities"]
 
+# Consumed by cargo-deb in the release workflow to build the .deb packages
+# published on GitHub Releases and in the apt repo (ewijaya/apt). The musl
+# release binary is fully static, so no Depends is declared.
+[package.metadata.deb]
+maintainer = "Edward Wijaya <ewijaya@gmail.com>"
+section = "utils"
+priority = "optional"
+depends = ""
+extended-description = """\
+lmtop ("language-model top") is a terminal dashboard for monitoring usage, \
+rate limits, rolling quota windows, reset times, burn velocity, and projected \
+exhaustion across AI coding agents such as OpenAI Codex and Claude Code. It \
+is designed especially for users on flat-rate subscription plans rather than \
+API-only billing."""
+
 [profile.release]
 strip = true
 lto = true

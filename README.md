@@ -82,6 +82,36 @@ Unavailable capabilities are shown as *unavailable*, never invented. See
 brew install ewijaya/tap/lmtop
 ```
 
+### Debian / Ubuntu (apt)
+
+One-time setup — enroll the signing key and repository:
+
+```bash
+curl -fsSL https://ewijaya.github.io/apt/lmtop.gpg \
+  | sudo tee /usr/share/keyrings/lmtop.gpg > /dev/null
+echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/lmtop.gpg] https://ewijaya.github.io/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/lmtop.list
+```
+
+Then install — and later upgrades arrive with ordinary `apt upgrade`:
+
+```bash
+sudo apt update && sudo apt install lmtop
+```
+
+The packages contain the same statically linked binaries as the release
+tarballs, so they install on any Debian or Ubuntu version with no
+dependencies. Prefer not to add a repository? Each release also attaches
+standalone `.deb` files:
+
+```bash
+sudo apt install ./lmtop_*_$(dpkg --print-architecture).deb
+```
+
+> lmtop is not in Debian or Ubuntu's own archives — `apt install lmtop`
+> works via the repository above, which tracks releases here immediately
+> instead of waiting on a distribution's package review and freeze cycle.
+
 ### Pre-built binary
 
 Download a tarball for your platform from the
@@ -115,11 +145,6 @@ produces `./target/release/lmtop`; make that global with:
 ```bash
 sudo install -m755 target/release/lmtop /usr/local/bin/lmtop
 ```
-
-> **Not packaged in `apt`.** `apt install lmtop` resolves against Debian and
-> Ubuntu's own archives, which requires a maintainer to sponsor the package
-> through their review process — and would then ship a version well behind
-> this repository. Use Homebrew or a release binary instead.
 
 ## Usage
 
