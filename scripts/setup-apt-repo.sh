@@ -15,17 +15,36 @@ KEY_UID="lmtop APT repository <ewijaya@gmail.com>"
 if gh repo view "$APT_REPO" > /dev/null 2>&1; then
   echo "✓ $APT_REPO already exists"
 else
-  gh repo create "$APT_REPO" --public --add-readme \
+  gh repo create "$APT_REPO" --public \
     -d "APT repository for lmtop (https://github.com/$OWNER/lmtop)"
   echo "✓ created $APT_REPO"
 fi
 
-# 2. GitHub Pages, serving the main branch root.
+# An initial commit must exist before Pages can deploy from a branch (and
+# before actions/checkout works). Done via the contents API rather than
+# `gh repo create --add-readme`, which older gh versions don't have.
+if [ "$(gh api "repos/$APT_REPO/branches" --jq 'length')" -gt 0 ]; then
+  echo "✓ initial commit already exists"
+else
+  readme="# apt
+
+APT repository for [lmtop](https://github.com/$OWNER/lmtop), published by
+its release workflow and served via GitHub Pages. Install instructions:
+https://github.com/$OWNER/lmtop#debian--ubuntu-apt
+"
+  gh api "repos/$APT_REPO/contents/README.md" -X PUT \
+    -f message="Initial commit" \
+    -f content="$(printf '%s' "$readme" | base64 | tr -d '\n')" > /dev/null
+  echo "✓ initial commit created"
+fi
+
+# 2. GitHub Pages, serving the default branch's root.
 if gh api "repos/$APT_REPO/pages" > /dev/null 2>&1; then
   echo "✓ Pages already enabled"
 else
+  branch=$(gh api "repos/$APT_REPO" --jq .default_branch)
   gh api "repos/$APT_REPO/pages" -X POST \
-    -f 'source[branch]=main' -f 'source[path]=/'
+    -f "source[branch]=$branch" -f 'source[path]=/' > /dev/null
   echo "✓ Pages enabled: https://$OWNER.github.io/apt"
 fi
 
