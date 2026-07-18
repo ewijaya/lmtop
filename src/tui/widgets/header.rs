@@ -86,6 +86,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             ("4", "plan"),
             ("Tab", "panel"),
             ("v", "chart"),
+            ("t", "theme"),
             ("Enter", "detail"),
             ("/", "filter"),
             ("?", "help"),
@@ -99,6 +100,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             ("4", "planner"),
             ("Tab", "panel"),
             ("v", "chart mode"),
+            ("t", "theme"),
             ("←→", "pan"),
             ("Enter", "detail"),
             ("o", "sort"),
@@ -133,8 +135,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
 
     // Drop key hints from the right end until they fit beside the
     // freshness block: two paragraphs share this row, so the left half
-    // must be told how much room it actually has.
-    let key_budget = area.width.saturating_sub(right_width);
+    // must be told how much room it actually has. One extra cell is
+    // reserved so the last hint never sits flush against the freshness
+    // text (its own trailing space alone reads as a collision).
+    let key_budget = area.width.saturating_sub(right_width + 1);
     let mut spans = Vec::new();
     let mut used = 0u16;
     for (key, label) in keys {
