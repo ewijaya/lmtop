@@ -117,6 +117,10 @@ pub struct UiConfig {
     /// (medium, broader font compatibility), or "tty" (lowest, maximum
     /// terminal compatibility). Unknown values fall back to braille.
     pub graph_symbol: String,
+    /// Color depth: "auto" (detect from COLORTERM/TERM), "truecolor",
+    /// "256", or "16". SSH does not forward COLORTERM, so a truecolor
+    /// terminal over SSH detects as 256 — set "truecolor" to force it.
+    pub color_depth: String,
     /// Force ASCII-only gauges and charts.
     pub ascii: bool,
     /// Skip anything that would touch the network.
@@ -131,6 +135,7 @@ impl Default for UiConfig {
             refresh_secs: 5,
             theme: "dark".into(),
             graph_symbol: "braille".into(),
+            color_depth: "auto".into(),
             ascii: false,
             offline: false,
             reduced_motion: false,

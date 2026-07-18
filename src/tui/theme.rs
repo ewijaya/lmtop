@@ -4,8 +4,9 @@
 //! (mostly mechanical conversions of btop's theme set), and users can add
 //! or override themes with `<config dir>/themes/<name>.toml`. Unknown
 //! names fall back to dark; the `t`/`T` keys cycle the loaded set at
-//! runtime. Every color degrades to the 16-color ANSI palette when the
-//! terminal does not advertise truecolor.
+//! runtime. Colors degrade with the detected [`ColorDepth`]: exact in
+//! truecolor, quantized to the xterm cube in 256-color terminals, and
+//! per-role ANSI fallbacks (identical across themes) at 16 colors.
 
 use crate::domain::{CollectorStatus, Freshness, ModelFamily, Provider};
 use ratatui::style::{Color, Modifier, Style};
@@ -320,6 +321,106 @@ fn load_palettes(dir: Option<&Path>) -> Vec<Palette> {
     palettes
 }
 
+/// How many colors the terminal can show. Truecolor renders palettes
+/// exactly; 256-color renders them quantized to the xterm cube (close
+/// enough to tell themes apart); 16-color drops to per-role ANSI
+/// fallbacks, where every theme looks the same. The header shows the
+/// active depth whenever it is degraded, rather than failing silently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorDepth {
+    TrueColor,
+    Indexed256,
+    Ansi16,
+}
+
+impl ColorDepth {
+    /// Detect from `COLORTERM`/`TERM`. SSH does not forward `COLORTERM`,
+    /// so a truecolor terminal often shows up here as its `TERM` string
+    /// only — `ui.color_depth` exists to override the guess.
+    fn detect(colorterm: &str, term: &str) -> Self {
+        let colorterm = colorterm.to_ascii_lowercase();
+        if colorterm.contains("truecolor") || colorterm.contains("24bit") {
+            return ColorDepth::TrueColor;
+        }
+        let term = term.to_ascii_lowercase();
+        if term.contains("truecolor")
+            || term.contains("direct")
+            || term.contains("kitty")
+            || term.contains("ghostty")
+            || term.contains("wezterm")
+            || term.contains("alacritty")
+            || term.contains("iterm")
+        {
+            return ColorDepth::TrueColor;
+        }
+        if term.contains("256") {
+            return ColorDepth::Indexed256;
+        }
+        ColorDepth::Ansi16
+    }
+
+    fn from_env() -> Self {
+        Self::detect(
+            &std::env::var("COLORTERM").unwrap_or_default(),
+            &std::env::var("TERM").unwrap_or_default(),
+        )
+    }
+
+    /// Config override: "truecolor", "256", or "16"; anything else
+    /// (including the default "auto") means keep the detected depth.
+    pub fn from_config(name: &str) -> Option<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "truecolor" | "24bit" => Some(ColorDepth::TrueColor),
+            "256" | "256color" => Some(ColorDepth::Indexed256),
+            "16" | "ansi" => Some(ColorDepth::Ansi16),
+            _ => None,
+        }
+    }
+
+    /// Suffix for the header's theme-name readout; empty at full depth.
+    pub fn label(self) -> &'static str {
+        match self {
+            ColorDepth::TrueColor => "",
+            ColorDepth::Indexed256 => "·256",
+            ColorDepth::Ansi16 => "·16",
+        }
+    }
+}
+
+/// Nearest xterm-256 index for an RGB color: the 6×6×6 color cube
+/// (16–231) or the grayscale ramp (232–255), whichever is closer.
+fn xterm256(rgb: Rgb) -> u8 {
+    // Cube channel levels are 0, 95, 135, 175, 215, 255.
+    fn cube_component(v: u8) -> (u8, u8) {
+        let idx = if v < 48 {
+            0
+        } else if v < 115 {
+            1
+        } else {
+            (v as u16 - 35) as u8 / 40
+        };
+        (idx, if idx == 0 { 0 } else { 55 + idx * 40 })
+    }
+    let (ri, rv) = cube_component(rgb.0);
+    let (gi, gv) = cube_component(rgb.1);
+    let (bi, bv) = cube_component(rgb.2);
+    let cube_index = 16 + 36 * ri + 6 * gi + bi;
+    let dist = |a: Rgb, b: Rgb| -> u32 {
+        let d = |x: u8, y: u8| (x as i32 - y as i32).pow(2) as u32;
+        d(a.0, b.0) + d(a.1, b.1) + d(a.2, b.2)
+    };
+    let cube_dist = dist(rgb, Rgb(rv, gv, bv));
+    // Grayscale ramp: 232 + i has value 8 + 10i, i in 0..24.
+    let gray_avg = ((rgb.0 as u16 + rgb.1 as u16 + rgb.2 as u16) / 3) as u8;
+    let gray_i = (gray_avg.saturating_sub(3) / 10).min(23);
+    let gray_v = 8 + 10 * gray_i;
+    if dist(rgb, Rgb(gray_v, gray_v, gray_v)) < cube_dist {
+        232 + gray_i
+    } else {
+        cube_index
+    }
+}
+
 /// Chart drawing symbol for the rate/quota chart, `ui.graph_symbol`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GraphSymbol {
@@ -347,7 +448,7 @@ impl GraphSymbol {
 
 #[derive(Debug, Clone)]
 pub struct Theme {
-    pub truecolor: bool,
+    pub depth: ColorDepth,
     pub ascii: bool,
     pub graph_symbol: GraphSymbol,
     palettes: Arc<Vec<Palette>>,
@@ -368,15 +469,12 @@ impl Theme {
     }
 
     fn with_palettes(ascii: bool, name: &str, palettes: Vec<Palette>) -> Self {
-        let truecolor = std::env::var("COLORTERM")
-            .map(|v| v.contains("truecolor") || v.contains("24bit"))
-            .unwrap_or(false);
         let index = palettes
             .iter()
             .position(|p| p.name.eq_ignore_ascii_case(name.trim()))
             .unwrap_or(0);
         Theme {
-            truecolor,
+            depth: ColorDepth::from_env(),
             ascii,
             graph_symbol: GraphSymbol::default(),
             palettes: Arc::new(palettes),
@@ -410,10 +508,10 @@ impl Theme {
     }
 
     fn color(&self, rgb: Rgb, fallback: Color) -> Color {
-        if self.truecolor {
-            Color::Rgb(rgb.0, rgb.1, rgb.2)
-        } else {
-            fallback
+        match self.depth {
+            ColorDepth::TrueColor => Color::Rgb(rgb.0, rgb.1, rgb.2),
+            ColorDepth::Indexed256 => Color::Indexed(xterm256(rgb)),
+            ColorDepth::Ansi16 => fallback,
         }
     }
 
@@ -481,19 +579,17 @@ impl Theme {
         self.color(self.palette().bad, Color::Red)
     }
 
-    /// Gauge color for a used percentage. In truecolor this is a continuous
-    /// blend (green → yellow across 40–75%, yellow → red across 75–95%);
-    /// 16-color terminals keep the classic three steps.
+    /// Gauge color for a used percentage: a continuous blend (green →
+    /// yellow across 40–75%, yellow → red across 75–95%), quantized in
+    /// 256-color mode; 16-color terminals keep the classic three steps.
     pub fn gauge_color(&self, used_percent: f64) -> Color {
-        if !self.truecolor {
-            return if used_percent >= 90.0 {
-                Color::Red
-            } else if used_percent >= 70.0 {
-                Color::Yellow
-            } else {
-                Color::Green
-            };
-        }
+        let stepped = if used_percent >= 90.0 {
+            Color::Red
+        } else if used_percent >= 70.0 {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
         let p = used_percent.clamp(0.0, 100.0);
         let palette = self.palette();
         let (from, to, t) = if p < 40.0 {
@@ -505,11 +601,12 @@ impl Theme {
         } else {
             (palette.bad, palette.bad, 1.0)
         };
-        Color::Rgb(
+        let blended = Rgb(
             lerp(from.0, to.0, t),
             lerp(from.1, to.1, t),
             lerp(from.2, to.2, t),
-        )
+        );
+        self.color(blended, stepped)
     }
 
     pub fn status(&self, status: CollectorStatus) -> (Color, &'static str) {
@@ -623,14 +720,61 @@ pub fn sparkline(values: &[f64], width: usize, ascii: bool) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn test_theme(truecolor: bool, palette: Palette) -> Theme {
+    fn test_theme(depth: ColorDepth, palette: Palette) -> Theme {
         Theme {
-            truecolor,
+            depth,
             ascii: false,
             graph_symbol: GraphSymbol::default(),
             palettes: Arc::new(vec![palette]),
             index: 0,
         }
+    }
+
+    #[test]
+    fn detects_color_depth() {
+        use ColorDepth::*;
+        assert_eq!(ColorDepth::detect("truecolor", "xterm-256color"), TrueColor);
+        assert_eq!(ColorDepth::detect("24bit", "screen"), TrueColor);
+        // SSH strips COLORTERM; TERM alone must still find the right tier.
+        assert_eq!(ColorDepth::detect("", "xterm-256color"), Indexed256);
+        assert_eq!(ColorDepth::detect("", "tmux-256color"), Indexed256);
+        assert_eq!(ColorDepth::detect("", "xterm-kitty"), TrueColor);
+        assert_eq!(ColorDepth::detect("", "xterm-direct"), TrueColor);
+        assert_eq!(ColorDepth::detect("", "screen"), Ansi16);
+        assert_eq!(ColorDepth::detect("", ""), Ansi16);
+        // Config override parsing; "auto"/unknown mean no override.
+        assert_eq!(ColorDepth::from_config("truecolor"), Some(TrueColor));
+        assert_eq!(ColorDepth::from_config("256"), Some(Indexed256));
+        assert_eq!(ColorDepth::from_config("16"), Some(Ansi16));
+        assert_eq!(ColorDepth::from_config("auto"), None);
+        assert_eq!(ColorDepth::from_config("bogus"), None);
+    }
+
+    #[test]
+    fn quantizes_to_xterm256() {
+        assert_eq!(xterm256(Rgb(0, 0, 0)), 16); // cube black
+        assert_eq!(xterm256(Rgb(255, 255, 255)), 231); // cube white
+        assert_eq!(xterm256(Rgb(255, 0, 0)), 196); // pure red
+        assert_eq!(xterm256(Rgb(0, 255, 0)), 46); // pure green
+        assert_eq!(xterm256(Rgb(0, 0, 255)), 21); // pure blue
+        assert_eq!(xterm256(Rgb(128, 128, 128)), 244); // mid gray → ramp
+        assert_eq!(xterm256(Rgb(95, 135, 175)), 67); // exact cube color
+    }
+
+    #[test]
+    fn color_depth_changes_rendering() {
+        let rgb = Rgb(122, 195, 255);
+        let truecolor = test_theme(ColorDepth::TrueColor, dark());
+        assert_eq!(truecolor.color(rgb, Color::Cyan), Color::Rgb(122, 195, 255));
+        let indexed = test_theme(ColorDepth::Indexed256, dark());
+        assert_eq!(indexed.color(rgb, Color::Cyan), Color::Indexed(117));
+        let ansi = test_theme(ColorDepth::Ansi16, dark());
+        assert_eq!(ansi.color(rgb, Color::Cyan), Color::Cyan);
+        // The gauge blend quantizes too instead of dropping to steps.
+        assert!(matches!(
+            indexed.gauge_color(57.5),
+            Color::Indexed(i) if i >= 16
+        ));
     }
 
     #[test]
@@ -762,7 +906,7 @@ mod tests {
 
     #[test]
     fn gauge_color_is_stepped_without_truecolor() {
-        let t = test_theme(false, dark());
+        let t = test_theme(ColorDepth::Ansi16, dark());
         assert_eq!(t.gauge_color(10.0), Color::Green);
         assert_eq!(t.gauge_color(75.0), Color::Yellow);
         assert_eq!(t.gauge_color(95.0), Color::Red);
@@ -770,7 +914,7 @@ mod tests {
 
     #[test]
     fn gauge_color_blends_with_truecolor() {
-        let t = test_theme(true, dark());
+        let t = test_theme(ColorDepth::TrueColor, dark());
         let d = dark();
         assert_eq!(t.gauge_color(0.0), Color::Rgb(d.good.0, d.good.1, d.good.2));
         assert_eq!(t.gauge_color(100.0), Color::Rgb(d.bad.0, d.bad.1, d.bad.2));

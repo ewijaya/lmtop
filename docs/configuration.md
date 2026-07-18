@@ -64,6 +64,12 @@ theme = "dark"
 #   tty     — lowest resolution, maximum terminal compatibility
 # Unknown values fall back to braille; ascii = true overrides this.
 graph_symbol = "braille"
+# Color depth: auto | truecolor | 256 | 16. "auto" detects from
+# COLORTERM/TERM. SSH does not forward COLORTERM, so a truecolor terminal
+# over SSH usually detects as 256 (themes render quantized) — set
+# "truecolor" to force full color. At 16 every theme looks the same; the
+# header shows ·256 / ·16 beside the theme name when depth is degraded.
+color_depth = "auto"
 # ASCII-only bars/charts for terminals without good unicode support.
 ascii = false
 # Never touch the network (also available as --offline).

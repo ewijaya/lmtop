@@ -505,6 +505,9 @@ fn tui_cmd(cfg: Config, provider_filter: Option<Provider>) -> Result<()> {
 
     let mut theme = crate::tui::theme::Theme::named(cfg.ui.ascii, &cfg.ui.theme);
     theme.graph_symbol = crate::tui::theme::GraphSymbol::from_name(&cfg.ui.graph_symbol);
+    if let Some(depth) = crate::tui::theme::ColorDepth::from_config(&cfg.ui.color_depth) {
+        theme.depth = depth;
+    }
     let now = Utc::now();
     let mut app = App::new(now, cfg.ui.refresh_secs);
     app.view = match provider_filter {

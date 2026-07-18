@@ -255,9 +255,16 @@ hand-curated.
 
 Add your own at `~/.config/lmtop/themes/<name>.toml` (any subset of the
 roles in a shipped file; unset roles keep the dark palette's colors). A
-user theme named like a shipped one replaces it. Truecolor terminals get
-the full palette (including continuous green→amber→red gauge blending);
-16-color terminals fall back to ANSI, where every theme looks the same.
+user theme named like a shipped one replaces it.
+
+Color depth is detected from `COLORTERM`/`TERM`: truecolor terminals get
+the exact palette (including continuous green→amber→red gauge blending),
+256-color terminals get it quantized to the xterm cube, and 16-color
+terminals fall back to ANSI, where every theme looks the same. The header
+shows `·256` or `·16` beside the theme name when depth is degraded.
+**Over SSH**, `COLORTERM` is not forwarded, so a truecolor terminal
+usually detects as 256 — set `color_depth = "truecolor"` in `[ui]` to
+force it.
 
 ## Custom providers
 

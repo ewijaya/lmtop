@@ -61,10 +61,12 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
         .format("%H:%M:%S")
         .to_string();
     let left = Line::from(spans);
-    // Theme name beside the clock (feedback for the t/T cycle keys), but
-    // only when the row is wide enough not to collide with the left half.
+    // Theme name beside the clock (feedback for the t/T cycle keys), with
+    // the color depth appended when it is degraded — at ·16 every theme
+    // looks identical, and that should be visible, not mysterious. Only
+    // when the row is wide enough not to collide with the left half.
     let right_text = if area.width >= 90 {
-        format!("{}  {clock} ", theme.palette().name)
+        format!("{}{}  {clock} ", theme.palette().name, theme.depth.label())
     } else {
         format!("{clock} ")
     };

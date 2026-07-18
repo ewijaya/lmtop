@@ -1,6 +1,6 @@
 [package]
 name = "lmtop"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 description = "A live terminal monitor for language-model usage, quotas, and subscription capacity"
 repository = "https://github.com/ewijaya/lmtop"
