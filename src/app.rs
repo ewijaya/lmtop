@@ -288,15 +288,26 @@ impl App {
             KeyAction::Focus(panel) => self.focus = panel,
             KeyAction::TogglePause => self.paused = !self.paused,
             KeyAction::ToggleHelp => self.show_help = !self.show_help,
+            // j/k claim the sessions panel rather than requiring focus
+            // first; the initial press reveals the cursor where it is,
+            // further presses move it.
             KeyAction::ScrollDown => {
-                if self.focus == Panel::Sessions && self.session_detail.is_none() {
-                    self.session_cursor = self.session_cursor.saturating_add(1);
-                    self.clamp_cursor();
+                if self.session_detail.is_none() {
+                    if self.focus == Panel::Sessions {
+                        self.session_cursor = self.session_cursor.saturating_add(1);
+                        self.clamp_cursor();
+                    } else {
+                        self.focus = Panel::Sessions;
+                    }
                 }
             }
             KeyAction::ScrollUp => {
-                if self.focus == Panel::Sessions && self.session_detail.is_none() {
-                    self.session_cursor = self.session_cursor.saturating_sub(1);
+                if self.session_detail.is_none() {
+                    if self.focus == Panel::Sessions {
+                        self.session_cursor = self.session_cursor.saturating_sub(1);
+                    } else {
+                        self.focus = Panel::Sessions;
+                    }
                 }
             }
             KeyAction::Select => {
@@ -445,6 +456,17 @@ mod tests {
         }
         app.apply_update(snap, now);
         app
+    }
+
+    #[test]
+    fn scroll_auto_focuses_sessions_before_moving() {
+        let mut app = app_with_sessions();
+        assert_ne!(app.focus, Panel::Sessions);
+        app.handle_key(KeyAction::ScrollDown);
+        assert_eq!(app.focus, Panel::Sessions);
+        assert_eq!(app.session_cursor, 0, "focus-claiming press must not move");
+        app.handle_key(KeyAction::ScrollDown);
+        assert_eq!(app.session_cursor, 1);
     }
 
     #[test]
