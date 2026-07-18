@@ -5,6 +5,9 @@
 # except the signing key, which is guarded separately below.
 set -euo pipefail
 
+# Never drop into gh's interactive pager mid-script.
+export GH_PAGER=cat
+
 OWNER=ewijaya
 APT_REPO="$OWNER/apt"
 SRC_REPO="$OWNER/lmtop"
@@ -56,7 +59,7 @@ if gh api "repos/$APT_REPO/keys" --jq '.[].title' | grep -qx "lmtop release bump
 else
   ssh-keygen -t ed25519 -f aptkey -N "" -C "lmtop-release-apt-bump"
   gh api "repos/$APT_REPO/keys" -X POST \
-    -f title="lmtop release bump" -f key="$(cat aptkey.pub)" -F read_only=false
+    -f title="lmtop release bump" -f key="$(cat aptkey.pub)" -F read_only=false > /dev/null
   gh secret set APT_DEPLOY_KEY --repo "$SRC_REPO" < aptkey
   shred -u aptkey aptkey.pub 2> /dev/null || rm -f aptkey aptkey.pub
   echo "✓ deploy key installed, APT_DEPLOY_KEY secret set"
