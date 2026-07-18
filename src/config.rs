@@ -272,4 +272,62 @@ mod tests {
     fn rejects_unknown_fields() {
         assert!(toml::from_str::<Config>("[ui]\nbogus = 1\n").is_err());
     }
+
+    /// The "Full reference (defaults shown)" block in docs/configuration.md
+    /// is hand-maintained against this file, and nothing else checks that
+    /// the two agree. Parse it as a real config: `deny_unknown_fields`
+    /// turns a renamed or deleted key into a failure here, and the
+    /// assertions below catch a default that drifted in the prose.
+    #[test]
+    fn documented_reference_config_matches_the_code() {
+        let doc = include_str!("../docs/configuration.md");
+        let block = doc
+            .split("```toml")
+            .nth(1)
+            .and_then(|s| s.split("```").next())
+            .expect("docs/configuration.md has a ```toml reference block");
+
+        // Commented-out optional keys (source, command, alert hook) are
+        // illustrative; the live keys must still parse as a whole.
+        let parsed: Config = toml::from_str(block).unwrap_or_else(|e| {
+            panic!("docs/configuration.md reference block no longer parses: {e}")
+        });
+
+        // The block claims to show defaults, so it must round-trip to them.
+        let d = Config::default();
+        assert_eq!(parsed.ui.refresh_secs, d.ui.refresh_secs);
+        assert_eq!(parsed.ui.theme, d.ui.theme);
+        assert_eq!(parsed.ui.graph_symbol, d.ui.graph_symbol);
+        assert_eq!(parsed.ui.color_depth, d.ui.color_depth);
+        assert_eq!(parsed.ui.ascii, d.ui.ascii);
+        assert_eq!(parsed.ui.offline, d.ui.offline);
+        assert_eq!(parsed.ui.reduced_motion, d.ui.reduced_motion);
+        assert_eq!(parsed.providers.codex.enabled, d.providers.codex.enabled);
+        assert_eq!(
+            parsed.providers.codex.network_quota,
+            d.providers.codex.network_quota
+        );
+        assert_eq!(parsed.providers.claude.enabled, d.providers.claude.enabled);
+        assert_eq!(parsed.providers.custom.enabled, d.providers.custom.enabled);
+        assert_eq!(parsed.providers.custom.name, d.providers.custom.name);
+        assert_eq!(parsed.time.week_start_day(), d.time.week_start_day());
+        assert_eq!(
+            parsed.time.fixed_offset_hours(),
+            d.time.fixed_offset_hours()
+        );
+        assert_eq!(
+            parsed.history.retention_minutes,
+            d.history.retention_minutes
+        );
+        assert_eq!(parsed.history.persist, d.history.persist);
+        assert_eq!(parsed.history.retention_days, d.history.retention_days);
+        assert_eq!(parsed.alerts.enabled, d.alerts.enabled);
+        assert_eq!(parsed.alerts.quota_thresholds, d.alerts.quota_thresholds);
+        assert_eq!(
+            parsed.alerts.exhaustion_warn_minutes,
+            d.alerts.exhaustion_warn_minutes
+        );
+        assert_eq!(parsed.alerts.bell, d.alerts.bell);
+        assert_eq!(parsed.alerts.desktop, d.alerts.desktop);
+    }
 }
