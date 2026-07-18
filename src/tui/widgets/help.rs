@@ -10,7 +10,6 @@ const KEYS: &[(&str, &str)] = &[
     ("2", "Claude view"),
     ("3", "Combined view"),
     ("4", "Planner view"),
-    ("Tab", "Change focused panel"),
     ("s", "Focus sessions"),
     ("m", "Focus model breakdown"),
     ("w", "Focus weekly usage"),

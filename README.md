@@ -197,14 +197,13 @@ has the exact contract). `--offline` always wins over `--live`.
 2        Claude view             Enter  Session detail overlay
 3        Combined view           o / O  Cycle / reverse session sort
 4        Planner view            /      Filter sessions (Esc clears)
-Tab      Change focused panel    v      Rate ⇄ quota timeline chart
-s        Focus sessions          ←/→    Pan chart back through history
-m        Focus model breakdown   +/-    Zoom chart window
-w        Focus weekly usage      0      Back to the live edge
-h        Focus history chart     r      Refresh now
-p        Pause collectors        ?      Help
-t / T    Next / previous theme   Esc    Close / clear / quit
-q        Quit
+s        Focus sessions          v      Rate ⇄ quota timeline chart
+m        Focus model breakdown   ←/→    Pan chart back through history
+w        Focus weekly usage      +/-    Zoom chart window
+h        Focus history chart     0      Back to the live edge
+p        Pause collectors        r      Refresh now
+t / T    Next / previous theme   ?      Help
+q        Quit                    Esc    Close / clear / quit
 ```
 
 The mouse works too: click to focus a panel, click a session to select it

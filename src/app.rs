@@ -25,21 +25,6 @@ pub enum Panel {
     Breakdown,
 }
 
-impl Panel {
-    pub const ORDER: [Panel; 5] = [
-        Panel::Providers,
-        Panel::Rate,
-        Panel::Sessions,
-        Panel::Weekly,
-        Panel::Breakdown,
-    ];
-
-    pub fn next(self) -> Panel {
-        let i = Self::ORDER.iter().position(|p| *p == self).unwrap_or(0);
-        Self::ORDER[(i + 1) % Self::ORDER.len()]
-    }
-}
-
 /// What the chart panel plots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChartMode {
@@ -300,7 +285,6 @@ impl App {
                 self.session_cursor = 0;
                 self.session_detail = None;
             }
-            KeyAction::NextPanel => self.focus = self.focus.next(),
             KeyAction::Focus(panel) => self.focus = panel,
             KeyAction::TogglePause => self.paused = !self.paused,
             KeyAction::ToggleHelp => self.show_help = !self.show_help,
@@ -392,7 +376,6 @@ pub enum KeyAction {
     /// Escape: close overlay / clear filter / quit, whichever applies.
     Back,
     View(View),
-    NextPanel,
     Focus(Panel),
     TogglePause,
     ToggleHelp,
@@ -462,16 +445,6 @@ mod tests {
         }
         app.apply_update(snap, now);
         app
-    }
-
-    #[test]
-    fn tab_cycles_panels() {
-        let mut app = App::new(Utc::now(), 5);
-        let start = app.focus;
-        for _ in 0..Panel::ORDER.len() {
-            app.handle_key(KeyAction::NextPanel);
-        }
-        assert_eq!(app.focus, start);
     }
 
     #[test]

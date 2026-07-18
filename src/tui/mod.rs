@@ -165,7 +165,6 @@ fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<KeyAction> {
         KeyCode::Char('2') => Some(KeyAction::View(View::Claude)),
         KeyCode::Char('3') => Some(KeyAction::View(View::Combined)),
         KeyCode::Char('4') => Some(KeyAction::View(View::Planner)),
-        KeyCode::Tab => Some(KeyAction::NextPanel),
         KeyCode::Char('s') => Some(KeyAction::Focus(Panel::Sessions)),
         KeyCode::Char('m') => Some(KeyAction::Focus(Panel::Breakdown)),
         KeyCode::Char('w') => Some(KeyAction::Focus(Panel::Weekly)),

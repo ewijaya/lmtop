@@ -84,12 +84,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             ("2", "claude"),
             ("3", "all"),
             ("4", "plan"),
-            ("Tab", "panel"),
-            ("v", "chart"),
             ("t", "theme"),
+            ("?", "help"),
             ("Enter", "detail"),
             ("/", "filter"),
-            ("?", "help"),
             ("q", "quit"),
         ]
     } else {
@@ -98,16 +96,13 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
             ("2", "claude"),
             ("3", "all"),
             ("4", "planner"),
-            ("Tab", "panel"),
-            ("v", "chart mode"),
             ("t", "theme"),
-            ("←→", "pan"),
+            ("?", "help"),
             ("Enter", "detail"),
             ("o", "sort"),
             ("/", "filter"),
             ("r", "refresh"),
             ("p", "pause"),
-            ("?", "help"),
             ("q", "quit"),
         ]
     };
