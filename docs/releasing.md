@@ -85,6 +85,10 @@ serving the previous version:
 
 ### One-time setup
 
+All of the below is scripted, idempotently, as `scripts/setup-apt-repo.sh`
+— run that locally (needs an authenticated `gh` and `gpg`). The individual
+steps, for reference and rotation:
+
 ```bash
 # 1. The repository: must exist with an initial commit, with GitHub Pages
 #    enabled on main / root (Settings → Pages → Deploy from a branch).
