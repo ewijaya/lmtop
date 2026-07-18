@@ -43,8 +43,10 @@ if gh api "repos/$APT_REPO/pages" > /dev/null 2>&1; then
   echo "✓ Pages already enabled"
 else
   branch=$(gh api "repos/$APT_REPO" --jq .default_branch)
-  gh api "repos/$APT_REPO/pages" -X POST \
-    -f "source[branch]=$branch" -f 'source[path]=/' > /dev/null
+  # Raw JSON body: older gh versions don't expand -f 'source[branch]=…'
+  # into a nested object, which the Pages API 422s on.
+  printf '{"source":{"branch":"%s","path":"/"}}' "$branch" \
+    | gh api "repos/$APT_REPO/pages" -X POST --input - > /dev/null
   echo "✓ Pages enabled: https://$OWNER.github.io/apt"
 fi
 
