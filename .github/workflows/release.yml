@@ -94,10 +94,21 @@ jobs:
           tar -czf "dist/${name}.tar.gz" -C dist "${name}"
           echo "archive=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
 
+      # Debian packages, from the same static musl binaries (--no-build).
+      # --no-strip: the release profile already strips, and the host strip
+      # would mangle the cross-built aarch64 binary anyway.
+      - name: Build .deb package
+        if: runner.os == 'Linux'
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build --no-strip --target ${{ matrix.target }} --output dist/
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: ${{ steps.package.outputs.archive }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            dist/*.deb
           if-no-files-found: error
 
   release:
@@ -117,13 +128,14 @@ jobs:
       - name: Checksums
         run: |
           cd artifacts
-          sha256sum *.tar.gz > SHA256SUMS
+          sha256sum *.tar.gz *.deb > SHA256SUMS
           cat SHA256SUMS
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/*.tar.gz
+            artifacts/*.deb
             artifacts/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -219,5 +231,89 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/lmtop.rb
+          git diff --staged --quiet || git commit -m "lmtop ${VERSION}"
+          git push
+
+  # Publishes the .deb packages to the apt repository in ewijaya/apt, served
+  # by GitHub Pages at https://ewijaya.github.io/apt — that is what
+  # `apt install lmtop` / `apt upgrade` then resolve against. Mirrors
+  # bump-tap's auth model (a deploy key scoped to that one repo), plus a GPG
+  # key that signs the repo metadata, since apt refuses unsigned repos.
+  # Skipped with a warning when either secret is absent, so a release never
+  # fails on this step. Setup and key rotation: docs/releasing.md.
+  bump-apt:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for apt secrets
+        id: check
+        run: |
+          if [ -n "${{ secrets.APT_DEPLOY_KEY }}" ] && [ -n "${{ secrets.APT_SIGNING_KEY }}" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::APT_DEPLOY_KEY or APT_SIGNING_KEY not set; skipping apt repo publish."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          repository: ewijaya/apt
+          ssh-key: ${{ secrets.APT_DEPLOY_KEY }}
+          path: aptrepo
+
+      - name: Publish to apt repository
+        if: steps.check.outputs.ok == 'true'
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils
+
+          echo "$APT_SIGNING_KEY" | gpg --batch --import
+          keyid=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
+
+          cd aptrepo
+          mkdir -p pool/main dists/stable/main/binary-amd64 dists/stable/main/binary-arm64
+          cp ../artifacts/*.deb pool/main/
+
+          # Superseded versions stay in the pool: a client holding a stale
+          # Packages index can still fetch what it references, and apt
+          # installs the newest regardless.
+          for arch in amd64 arm64; do
+            dpkg-scanpackages --arch "$arch" pool > "dists/stable/main/binary-${arch}/Packages"
+            gzip -9 -c "dists/stable/main/binary-${arch}/Packages" > "dists/stable/main/binary-${arch}/Packages.gz"
+          done
+
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=lmtop \
+            -o APT::FTPArchive::Release::Label=lmtop \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures="amd64 arm64" \
+            -o APT::FTPArchive::Release::Components=main \
+            release dists/stable > dists/stable/Release
+
+          gpg --batch --yes -u "$keyid" --detach-sign --armor \
+            -o dists/stable/Release.gpg dists/stable/Release
+          gpg --batch --yes -u "$keyid" --clearsign \
+            -o dists/stable/InRelease dists/stable/Release
+
+          # The public key clients enroll under /usr/share/keyrings; export
+          # it every run so the repo always serves the current signing key.
+          gpg --export "$keyid" > lmtop.gpg
+          touch .nojekyll
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
           git diff --staged --quiet || git commit -m "lmtop ${VERSION}"
           git push
