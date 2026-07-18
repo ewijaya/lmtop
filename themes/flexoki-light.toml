@@ -1,0 +1,25 @@
+# Converted from the btop theme "flexoki-light"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#343331"
+dim = "#b7b5ac"
+border = "#cecdc3"
+border_focused = "#bc5215"
+good = "#66800b"
+warn = "#d0a215"
+bad = "#af3029"
+codex = "#4385be"
+codex_dim = "#aac6da"
+claude = "#bc5215"
+claude_dim = "#e1b08d"
+custom = "#24837b"
+custom_dim = "#9cc6bb"
+fable = "#5e409d"
+opus = "#bc5215"
+sonnet = "#ad8301"
+haiku = "#66800b"
+gpt = "#4385be"
+other_model = "#76746e"

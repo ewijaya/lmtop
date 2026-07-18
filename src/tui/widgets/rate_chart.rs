@@ -9,7 +9,6 @@ use chrono::{DateTime, Duration, Utc};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::symbols;
 use ratatui::text::Span;
 use ratatui::widgets::{Axis, Block, BorderType, Borders, Chart, Dataset, GraphType};
 use std::collections::BTreeMap;
@@ -285,11 +284,7 @@ fn render_quota(
 }
 
 fn build_datasets<'a>(series: &'a [Series], theme: &Theme) -> Vec<Dataset<'a>> {
-    let marker = if theme.ascii {
-        symbols::Marker::Dot
-    } else {
-        symbols::Marker::Braille
-    };
+    let marker = theme.marker();
     series
         .iter()
         .map(|(color, name, pts)| {

@@ -1,0 +1,25 @@
+# Converted from the btop theme "everforest-dark-hard"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#d3c6aa"
+dim = "#272e33"
+border = "#374145"
+border_focused = "#e67e80"
+good = "#83c092"
+warn = "#dbbc7f"
+bad = "#f85552"
+codex = "#7fbbb3"
+codex_dim = "#4f6d6d"
+claude = "#dbbc7f"
+claude_dim = "#786e55"
+custom = "#83c092"
+custom_dim = "#50705e"
+fable = "#e67e80"
+opus = "#dbbc7f"
+sonnet = "#dbbc7f"
+haiku = "#dbbc7f"
+gpt = "#7fbbb3"
+other_model = "#7d7a6e"

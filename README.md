@@ -240,9 +240,24 @@ are never raised from data older than an hour.
 
 ## Themes
 
-`theme = "dark" | "light" | "catppuccin" | "gruvbox" | "nord"` in the
-config. Truecolor terminals get the full palette (including continuous
-green→amber→red gauge blending); 16-color terminals fall back to ANSI.
+45 themes ship in the binary: the curated `dark`, `light`, `catppuccin`,
+`gruvbox`, and `nord` palettes, plus btop's entire theme collection
+(`dracula`, `tokyo-night`, `onedark`, `everforest-dark-medium`,
+`solarized_light`, … — see `themes/`) converted by
+`scripts/btop2lmtop.py`. Pick one with `theme = "<name>"` in the config,
+or cycle live with `t` / `T` (the header shows the current name; set
+`ui.theme` to keep it).
+
+The btop conversions map structural colors directly, but lmtop's semantic
+roles (good/warn/bad, provider and model accents) don't exist in btop, so
+those are derived mechanically by nearest hue — coherent, not
+hand-curated.
+
+Add your own at `~/.config/lmtop/themes/<name>.toml` (any subset of the
+roles in a shipped file; unset roles keep the dark palette's colors). A
+user theme named like a shipped one replaces it. Truecolor terminals get
+the full palette (including continuous green→amber→red gauge blending);
+16-color terminals fall back to ANSI, where every theme looks the same.
 
 ## Custom providers
 

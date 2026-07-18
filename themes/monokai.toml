@@ -1,0 +1,25 @@
+# Converted from the btop theme "monokai"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#f8f8f2"
+dim = "#595647"
+border = "#595647"
+border_focused = "#f92672"
+good = "#e2f5bc"
+warn = "#f2ecb6"
+bad = "#ff87b2"
+codex = "#ccaefc"
+codex_dim = "#5f5274"
+claude = "#f2ecb6"
+claude_dim = "#706d54"
+custom = "#aae7f2"
+custom_dim = "#506b6f"
+fable = "#ccaefc"
+opus = "#f2ecb6"
+sonnet = "#e6db74"
+haiku = "#e2f5bc"
+gpt = "#66d9ef"
+other_model = "#a8a79c"

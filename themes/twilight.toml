@@ -1,0 +1,25 @@
+# Converted from the btop theme "twilight"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#a7a7a7"
+dim = "#828282"
+border = "#494949"
+border_focused = "#cf6a4c"
+good = "#8f9d6a"
+warn = "#dad085"
+bad = "#cf6a4c"
+codex = "#f9ee98"
+codex_dim = "#7b764f"
+claude = "#cf6a4c"
+claude_dim = "#683b2d"
+custom = "#8f9d6a"
+custom_dim = "#4b523b"
+fable = "#cf6a4c"
+opus = "#cf6a4c"
+sonnet = "#f9ee98"
+haiku = "#f9ee98"
+gpt = "#f9ee98"
+other_model = "#949494"

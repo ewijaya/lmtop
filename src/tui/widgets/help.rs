@@ -25,6 +25,7 @@ const KEYS: &[(&str, &str)] = &[
     ("0", "Back to live edge"),
     ("r", "Refresh now"),
     ("p", "Pause / resume"),
+    ("t / T", "Next / previous theme"),
     ("?", "Toggle this help"),
     ("q", "Quit"),
     ("Esc", "Close / clear / quit"),

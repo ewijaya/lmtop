@@ -1,0 +1,25 @@
+# Converted from the btop theme "solarized_light"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#586e75"
+dim = "#eee8d5"
+border = "#93a1a1"
+border_focused = "#b58900"
+good = "#adc700"
+warn = "#b58900"
+bad = "#e02f30"
+codex = "#a3a8f7"
+codex_dim = "#d4d3ec"
+claude = "#e65317"
+claude_dim = "#f3ad87"
+custom = "#002b36"
+custom_dim = "#8b9b95"
+fable = "#ccb5f7"
+opus = "#e65317"
+sonnet = "#edb400"
+haiku = "#adc700"
+gpt = "#268bd2"
+other_model = "#a3aba5"

@@ -1,0 +1,25 @@
+# Converted from the btop theme "whiteout"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#303030"
+dim = "#dddddd"
+border = "#808080"
+border_focused = "#284d75"
+good = "#03521d"
+warn = "#ffb814"
+bad = "#8d0202"
+codex = "#0b1a29"
+codex_dim = "#91989f"
+claude = "#ffb814"
+claude_dim = "#ffdf95"
+custom = "#0b8e44"
+custom_dim = "#91ccab"
+fable = "#2b062d"
+opus = "#ffb814"
+sonnet = "#a49104"
+haiku = "#70ba26"
+gpt = "#0b1a29"
+other_model = "#868686"

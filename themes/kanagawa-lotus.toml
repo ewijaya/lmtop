@@ -1,0 +1,25 @@
+# Converted from the btop theme "kanagawa-lotus"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#545464"
+dim = "#8a8980"
+border = "#8a8980"
+border_focused = "#c84053"
+good = "#6e915f"
+warn = "#e98a00"
+bad = "#d7474b"
+codex = "#4d699b"
+codex_dim = "#a8b1ad"
+claude = "#ff9e3b"
+claude_dim = "#f8c982"
+custom = "#4e8ca2"
+custom_dim = "#a8c1b0"
+fable = "#c84053"
+opus = "#ff9e3b"
+sonnet = "#e98a00"
+haiku = "#e98a00"
+gpt = "#4d699b"
+other_model = "#6f6e72"

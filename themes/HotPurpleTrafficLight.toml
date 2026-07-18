@@ -1,0 +1,25 @@
+# Converted from the btop theme "HotPurpleTrafficLight"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#d1d1e0"
+dim = "#9999ff"
+border = "#4d4dff"
+border_focused = "#9933ff"
+good = "#00ff00"
+warn = "#ff9933"
+bad = "#ff0000"
+codex = "#9933ff"
+codex_dim = "#451773"
+claude = "#ff9933"
+claude_dim = "#734517"
+custom = "#00ff00"
+custom_dim = "#007300"
+fable = "#9933ff"
+opus = "#ff9933"
+sonnet = "#ccff66"
+haiku = "#00ff00"
+gpt = "#9933ff"
+other_model = "#b5b5f0"

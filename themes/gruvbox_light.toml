@@ -1,0 +1,25 @@
+# Converted from the btop theme "gruvbox_light"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#3c3836"
+dim = "#ebdbb2"
+border = "#a89984"
+border_focused = "#cc241d"
+good = "#98971a"
+warn = "#d79921"
+bad = "#cc241d"
+codex = "#076678"
+codex_dim = "#8db2a3"
+claude = "#d65d0e"
+claude_dim = "#eaae74"
+custom = "#427b58"
+custom_dim = "#a8bc95"
+fable = "#cc241d"
+opus = "#d65d0e"
+sonnet = "#79740e"
+haiku = "#98971a"
+gpt = "#076678"
+other_model = "#948a74"

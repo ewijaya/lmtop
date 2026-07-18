@@ -50,7 +50,7 @@ impl Default for CollectorControl {
 
 pub fn run(
     mut app: App,
-    theme: Theme,
+    mut theme: Theme,
     mut updates: tokio::sync::mpsc::Receiver<crate::domain::ProviderSnapshot>,
     control: CollectorControl,
     mut alert_engine: AlertEngine,
@@ -62,7 +62,7 @@ pub fn run(
     let result = event_loop(
         &mut terminal,
         &mut app,
-        &theme,
+        &mut theme,
         &mut updates,
         &control,
         &mut alert_engine,
@@ -75,7 +75,7 @@ pub fn run(
 fn event_loop(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
-    theme: &Theme,
+    theme: &mut Theme,
     updates: &mut tokio::sync::mpsc::Receiver<crate::domain::ProviderSnapshot>,
     control: &CollectorControl,
     alert_engine: &mut AlertEngine,
@@ -120,6 +120,10 @@ fn event_loop(
                         }
                     } else if key.code == KeyCode::Char('r') {
                         control.refresh_now.notify_waiters();
+                    } else if key.code == KeyCode::Char('t') {
+                        theme.cycle(1);
+                    } else if key.code == KeyCode::Char('T') {
+                        theme.cycle(-1);
                     }
                 }
                 Event::Mouse(mouse) => {

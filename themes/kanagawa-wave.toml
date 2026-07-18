@@ -1,0 +1,25 @@
+# Converted from the btop theme "kanagawa-wave"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#dcd7ba"
+dim = "#727169"
+border = "#727169"
+border_focused = "#c34043"
+good = "#98bb6c"
+warn = "#e6c384"
+bad = "#c34043"
+codex = "#7e9cdb"
+codex_dim = "#455272"
+claude = "#ff9e3b"
+claude_dim = "#7f532a"
+custom = "#7fb4ca"
+custom_dim = "#455d6b"
+fable = "#7e9cdb"
+opus = "#ff9e3b"
+sonnet = "#e6c384"
+haiku = "#98bb6c"
+gpt = "#7e9cdb"
+other_model = "#a7a492"

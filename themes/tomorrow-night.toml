@@ -1,0 +1,25 @@
+# Converted from the btop theme "tomorrow-night"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#c5c8c6"
+dim = "#373b41"
+border = "#81a2be"
+border_focused = "#81beb7"
+good = "#b5bd68"
+warn = "#f0c674"
+bad = "#cc6666"
+codex = "#cc6666"
+codex_dim = "#6c3f40"
+claude = "#f0c674"
+claude_dim = "#7c6a46"
+custom = "#81beb7"
+custom_dim = "#4a6764"
+fable = "#cc6666"
+opus = "#f0c674"
+sonnet = "#f0c674"
+haiku = "#b5bd68"
+gpt = "#81beb7"
+other_model = "#7e8284"

@@ -1,0 +1,25 @@
+# Converted from the btop theme "ayu"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#bfbdb6"
+dim = "#565b66"
+border = "#565b66"
+border_focused = "#e6b450"
+good = "#95e6cb"
+warn = "#e6b450"
+bad = "#f07171"
+codex = "#399ee6"
+codex_dim = "#204f72"
+claude = "#e6b450"
+claude_dim = "#6e592f"
+custom = "#4cbf99"
+custom_dim = "#285e50"
+fable = "#dfbfff"
+opus = "#e6b450"
+sonnet = "#e6b450"
+haiku = "#95e6cb"
+gpt = "#399ee6"
+other_model = "#8a8c8e"

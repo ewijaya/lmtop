@@ -1,0 +1,25 @@
+# Converted from the btop theme "kanagawa-dragon"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#c5c9c5"
+dim = "#7a8382"
+border = "#7a8382"
+border_focused = "#c4746e"
+good = "#c4b28a"
+warn = "#c4746e"
+bad = "#c4746e"
+codex = "#c4746e"
+codex_dim = "#65403e"
+claude = "#c4746e"
+claude_dim = "#65403e"
+custom = "#c4b28a"
+custom_dim = "#655c4a"
+fable = "#c4746e"
+opus = "#c4746e"
+sonnet = "#c4b28a"
+haiku = "#c4b28a"
+gpt = "#c4746e"
+other_model = "#a0a6a4"

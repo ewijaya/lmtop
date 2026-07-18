@@ -1,0 +1,25 @@
+# Converted from the btop theme "flat-remix"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#e6e6e6"
+dim = "#404040"
+border = "#505050"
+border_focused = "#909090"
+good = "#54bd8e"
+warn = "#fea44c"
+bad = "#fe7171"
+codex = "#367bf0"
+codex_dim = "#29487c"
+claude = "#fea44c"
+claude_dim = "#835a33"
+custom = "#19a187"
+custom_dim = "#1c594d"
+fable = "#8c42ab"
+opus = "#fea44c"
+sonnet = "#fea44c"
+haiku = "#54bd8e"
+gpt = "#367bf0"
+other_model = "#939393"

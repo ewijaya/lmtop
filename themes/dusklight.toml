@@ -1,0 +1,25 @@
+# Converted from the btop theme "dusklight"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#99dfff"
+dim = "#052e51"
+border = "#a55800"
+border_focused = "#ff7f00"
+good = "#99ffff"
+warn = "#fff86b"
+bad = "#ff7f00"
+codex = "#009eff"
+codex_dim = "#02528c"
+claude = "#ff7f00"
+claude_dim = "#754419"
+custom = "#99ffff"
+custom_dim = "#477e8c"
+fable = "#009eff"
+opus = "#ff7f00"
+sonnet = "#fff86b"
+haiku = "#fff86b"
+gpt = "#009eff"
+other_model = "#4f86a8"

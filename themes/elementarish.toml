@@ -1,0 +1,25 @@
+# Converted from the btop theme "elementarish"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#eee8d5"
+dim = "#657b83"
+border = "#657b83"
+border_focused = "#d1302c"
+good = "#859900"
+warn = "#b28602"
+bad = "#d1302c"
+codex = "#268ad0"
+codex_dim = "#2d5a7a"
+claude = "#b28602"
+claude_dim = "#6c581d"
+custom = "#2a9d95"
+custom_dim = "#2f635f"
+fable = "#6c71c4"
+opus = "#b28602"
+sonnet = "#b28602"
+haiku = "#859900"
+gpt = "#268ad0"
+other_model = "#aab2ac"

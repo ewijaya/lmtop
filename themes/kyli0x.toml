@@ -1,0 +1,25 @@
+# Converted from the btop theme "kyli0x"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#e8f6f5"
+dim = "#5ec4bc"
+border = "#80638e"
+border_focused = "#21d6c9"
+good = "#5ec4bc"
+warn = "#ec95ec"
+bad = "#ec95ec"
+codex = "#21d6c9"
+codex_dim = "#22736d"
+claude = "#ec95ec"
+claude_dim = "#7d567d"
+custom = "#5ec4bc"
+custom_dim = "#3d6b67"
+fable = "#ec95ec"
+opus = "#ec95ec"
+sonnet = "#ec95ec"
+haiku = "#5ec4bc"
+gpt = "#21d6c9"
+other_model = "#a3ddd8"

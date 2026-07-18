@@ -1,0 +1,25 @@
+# Converted from the btop theme "dracula"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#f8f8f2"
+dim = "#44475a"
+border = "#44475a"
+border_focused = "#6272a4"
+good = "#96faaf"
+warn = "#ffb86c"
+bad = "#ffa6d9"
+codex = "#26d7fd"
+codex_dim = "#277890"
+claude = "#ff9c33"
+claude_dim = "#895d35"
+custom = "#0dfa49"
+custom_dim = "#1c883f"
+fable = "#bd93f9"
+opus = "#ff9c33"
+sonnet = "#ffb86c"
+haiku = "#96faaf"
+gpt = "#26d7fd"
+other_model = "#9ea0a6"

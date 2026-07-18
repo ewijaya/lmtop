@@ -503,7 +503,8 @@ fn tui_cmd(cfg: Config, provider_filter: Option<Provider>) -> Result<()> {
     }
     drop(tx);
 
-    let theme = crate::tui::theme::Theme::named(cfg.ui.ascii, &cfg.ui.theme);
+    let mut theme = crate::tui::theme::Theme::named(cfg.ui.ascii, &cfg.ui.theme);
+    theme.graph_symbol = crate::tui::theme::GraphSymbol::from_name(&cfg.ui.graph_symbol);
     let now = Utc::now();
     let mut app = App::new(now, cfg.ui.refresh_secs);
     app.view = match provider_filter {

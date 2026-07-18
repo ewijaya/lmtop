@@ -1,0 +1,25 @@
+# Converted from the btop theme "adwaita-dark"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#deddda"
+dim = "#77767b"
+border = "#77767b"
+border_focused = "#62a0ea"
+good = "#62a0ea"
+warn = "#e01b24"
+bad = "#e01b24"
+codex = "#62a0ea"
+codex_dim = "#3c5879"
+claude = "#e01b24"
+claude_dim = "#751c20"
+custom = "#62a0ea"
+custom_dim = "#3c5879"
+fable = "#1c71d8"
+opus = "#e01b24"
+sonnet = "#e01b24"
+haiku = "#62a0ea"
+gpt = "#62a0ea"
+other_model = "#aaaaaa"

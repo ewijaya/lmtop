@@ -1,0 +1,25 @@
+# Converted from the btop theme "tokyo-storm"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#cfc9c2"
+dim = "#565f89"
+border = "#565f89"
+border_focused = "#7dcfff"
+good = "#9ece6a"
+warn = "#e0af68"
+bad = "#f7768e"
+codex = "#7dcfff"
+codex_dim = "#4c7393"
+claude = "#e0af68"
+claude_dim = "#79654f"
+custom = "#9ece6a"
+custom_dim = "#5b7350"
+fable = "#f7768e"
+opus = "#e0af68"
+sonnet = "#e0af68"
+haiku = "#9ece6a"
+gpt = "#7dcfff"
+other_model = "#9294a6"

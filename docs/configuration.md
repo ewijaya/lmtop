@@ -51,9 +51,19 @@ name = "Custom"
 [ui]
 # Seconds between filesystem rescans. Rendering is independent of this.
 refresh_secs = 5
-# Color palette: dark | light | catppuccin | gruvbox | nord.
+# Color palette. 45 ship in the binary — dark | light | catppuccin |
+# gruvbox | nord plus btop's theme set (dracula, tokyo-night, onedark,
+# solarized_dark, …; full list in the repo's themes/ directory). Your own
+# ~/.config/lmtop/themes/<name>.toml files are also picked up by name and
+# may override shipped ones; the t/T keys cycle themes at runtime.
 # Unknown names fall back to dark. 16-color terminals ignore this.
 theme = "dark"
+# Chart drawing symbol for the token-rate / quota chart:
+#   braille — highest resolution
+#   block   — medium resolution, broader font compatibility
+#   tty     — lowest resolution, maximum terminal compatibility
+# Unknown values fall back to braille; ascii = true overrides this.
+graph_symbol = "braille"
 # ASCII-only bars/charts for terminals without good unicode support.
 ascii = false
 # Never touch the network (also available as --offline).

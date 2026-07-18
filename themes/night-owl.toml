@@ -1,0 +1,25 @@
+# Converted from the btop theme "night-owl"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#d6deeb"
+dim = "#575656"
+border = "#ffffff"
+border_focused = "#addb67"
+good = "#22da6e"
+warn = "#ffeb95"
+bad = "#ef5350"
+codex = "#82aaff"
+codex_dim = "#3b5988"
+claude = "#ffeb95"
+claude_dim = "#737658"
+custom = "#22da6e"
+custom_dim = "#106e47"
+fable = "#c792ea"
+opus = "#ffeb95"
+sonnet = "#ffeb95"
+haiku = "#addb67"
+gpt = "#82aaff"
+other_model = "#969aa0"

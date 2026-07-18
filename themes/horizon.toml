@@ -1,0 +1,25 @@
+# Converted from the btop theme "horizon"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#f8f8f2"
+dim = "#272e33"
+border = "#272e33"
+border_focused = "#b877db"
+good = "#27d796"
+warn = "#fac29a"
+bad = "#e95678"
+codex = "#b877db"
+codex_dim = "#624677"
+claude = "#fac29a"
+claude_dim = "#80685a"
+custom = "#27d796"
+custom_dim = "#217158"
+fable = "#b877db"
+opus = "#fac29a"
+sonnet = "#fac29a"
+haiku = "#27d796"
+gpt = "#27d796"
+other_model = "#909392"

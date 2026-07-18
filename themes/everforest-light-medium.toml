@@ -1,0 +1,25 @@
+# Converted from the btop theme "everforest-light-medium"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#5c6a72"
+dim = "#9da9a0"
+border = "#4f585e"
+border_focused = "#df69ba"
+good = "#35a77c"
+warn = "#dfa000"
+bad = "#e66868"
+codex = "#3994c5"
+codex_dim = "#a5cad6"
+claude = "#dfa000"
+claude_dim = "#f0cf7d"
+custom = "#35a77c"
+custom_dim = "#a3d2b5"
+fable = "#df69ba"
+opus = "#dfa000"
+sonnet = "#dfa000"
+haiku = "#8da101"
+gpt = "#3994c5"
+other_model = "#7c8a89"

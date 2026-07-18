@@ -1,0 +1,25 @@
+# Converted from the btop theme "greyscale"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#bbbbbb"
+dim = "#303030"
+border = "#303030"
+border_focused = "#909090"
+good = "#ffffff"
+warn = "#ffffff"
+bad = "#ffffff"
+codex = "#ffffff"
+codex_dim = "#737373"
+claude = "#ffffff"
+claude_dim = "#737373"
+custom = "#ffffff"
+custom_dim = "#737373"
+fable = "#ffffff"
+opus = "#ffffff"
+sonnet = "#ffffff"
+haiku = "#ffffff"
+gpt = "#ffffff"
+other_model = "#767676"

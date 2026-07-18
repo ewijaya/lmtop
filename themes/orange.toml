@@ -1,0 +1,25 @@
+# Converted from the btop theme "orange"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = false
+text = "#ffa500"
+dim = "#4d3200"
+border = "#332100"
+border_focused = "#ffcc66"
+good = "#ffcc66"
+warn = "#ffcc66"
+bad = "#996300"
+codex = "#ffcc66"
+codex_dim = "#735c2e"
+claude = "#996300"
+claude_dim = "#452d00"
+custom = "#ffcc66"
+custom_dim = "#735c2e"
+fable = "#996300"
+opus = "#996300"
+sonnet = "#ffcc66"
+haiku = "#ffcc66"
+gpt = "#ffcc66"
+other_model = "#a66c00"

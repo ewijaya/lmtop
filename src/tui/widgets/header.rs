@@ -61,7 +61,14 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
         .format("%H:%M:%S")
         .to_string();
     let left = Line::from(spans);
-    let right = Line::from(Span::styled(format!("{clock} "), theme.dim())).right_aligned();
+    // Theme name beside the clock (feedback for the t/T cycle keys), but
+    // only when the row is wide enough not to collide with the left half.
+    let right_text = if area.width >= 90 {
+        format!("{}  {clock} ", theme.palette().name)
+    } else {
+        format!("{clock} ")
+    };
+    let right = Line::from(Span::styled(right_text, theme.dim())).right_aligned();
     frame.render_widget(Paragraph::new(left), area);
     frame.render_widget(Paragraph::new(right), area);
 }

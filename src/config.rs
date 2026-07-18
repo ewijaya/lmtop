@@ -113,6 +113,10 @@ pub struct UiConfig {
     /// Seconds between collector rescans (not the render rate).
     pub refresh_secs: u64,
     pub theme: String,
+    /// Chart drawing symbol: "braille" (highest resolution), "block"
+    /// (medium, broader font compatibility), or "tty" (lowest, maximum
+    /// terminal compatibility). Unknown values fall back to braille.
+    pub graph_symbol: String,
     /// Force ASCII-only gauges and charts.
     pub ascii: bool,
     /// Skip anything that would touch the network.
@@ -126,6 +130,7 @@ impl Default for UiConfig {
         UiConfig {
             refresh_secs: 5,
             theme: "dark".into(),
+            graph_symbol: "braille".into(),
             ascii: false,
             offline: false,
             reduced_motion: false,
@@ -232,6 +237,7 @@ mod tests {
         let c = Config::default();
         assert!(c.providers.codex.enabled);
         assert_eq!(c.ui.refresh_secs, 5);
+        assert_eq!(c.ui.graph_symbol, "braille");
         assert_eq!(c.time.week_start_day(), Weekday::Mon);
         assert_eq!(c.time.fixed_offset_hours(), None);
     }

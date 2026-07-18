@@ -1,0 +1,25 @@
+# Converted from the btop theme "paper"
+# (https://github.com/aristocratos/btop/tree/main/themes).
+# Structural colors map directly; the good/warn/bad and
+# provider/model accents are derived mechanically by nearest hue,
+# not hand-curated. Tune freely.
+light = true
+text = "#000000"
+dim = "#d8d5c7"
+border = "#000000"
+border_focused = "#cc3e28"
+good = "#1e6fcc"
+warn = "#216609"
+bad = "#cc3e28"
+codex = "#1e6fcc"
+codex_dim = "#93b5d6"
+claude = "#cc3e28"
+claude_dim = "#e19f8c"
+custom = "#216609"
+custom_dim = "#94b17e"
+fable = "#1e6fcc"
+opus = "#cc3e28"
+sonnet = "#cc3e28"
+haiku = "#216609"
+gpt = "#1e6fcc"
+other_model = "#6c6a64"
