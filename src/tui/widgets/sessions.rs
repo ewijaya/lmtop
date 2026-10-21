@@ -19,6 +19,8 @@ pub fn render_sessions(
     focused: bool,
     narrow: bool,
 ) {
+    // Leave room for the effort column before using the full table.
+    let narrow = narrow || area.width < 88;
     let border_style = if focused {
         theme.border_focused()
     } else {
@@ -75,10 +77,11 @@ pub fn render_sessions(
     };
 
     let header_cells: Vec<&str> = if narrow {
-        vec!["Prov", "Model", "Tokens", "Age"]
+        vec!["Prov", "Model", "Effort", "Tokens", "Age"]
     } else {
         vec![
-            "Provider", "Model", "Context", "Tok/min", "Tokens", "Project", "Age", "State",
+            "Provider", "Model", "Effort", "Context", "Tok/min", "Tokens", "Project", "Age",
+            "State",
         ]
     };
     let header = Row::new(
@@ -115,6 +118,7 @@ pub fn render_sessions(
                 .map(|t| fmt_age(now.signed_duration_since(t).num_seconds()))
                 .unwrap_or_else(|| "-".into());
             let tokens = fmt_tokens(s.tokens.total());
+            let effort = s.reasoning_effort.as_deref().unwrap_or("-");
             let provider_label = if state == SessionState::Active {
                 let dot = if theme.ascii {
                     "*"
@@ -131,6 +135,7 @@ pub fn render_sessions(
                 Row::new(vec![
                     Cell::from(Span::styled(provider_label, provider_style)),
                     Cell::from(Span::styled(model, state_style)),
+                    Cell::from(Span::styled(effort, state_style)),
                     Cell::from(Span::styled(tokens, state_style)),
                     Cell::from(Span::styled(age, state_style)),
                 ])
@@ -152,6 +157,7 @@ pub fn render_sessions(
                 Row::new(vec![
                     Cell::from(Span::styled(provider_label, provider_style)),
                     Cell::from(Span::styled(model, state_style)),
+                    Cell::from(Span::styled(effort, state_style)),
                     Cell::from(Span::styled(context, state_style)),
                     Cell::from(Span::styled(rate, state_style)),
                     Cell::from(Span::styled(tokens, state_style)),
@@ -172,6 +178,7 @@ pub fn render_sessions(
         vec![
             Constraint::Length(7),
             Constraint::Min(10),
+            Constraint::Length(7),
             Constraint::Length(8),
             Constraint::Length(5),
         ]
@@ -179,6 +186,7 @@ pub fn render_sessions(
         vec![
             Constraint::Length(9),
             Constraint::Length(14),
+            Constraint::Length(7),
             Constraint::Length(7),
             Constraint::Length(8),
             Constraint::Length(8),

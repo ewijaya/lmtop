@@ -441,6 +441,7 @@ mod tests {
                 provider: Provider::Claude,
                 id: id.into(),
                 model: None,
+                reasoning_effort: None,
                 project: Some(project.into()),
                 started_at: None,
                 last_activity: Some(now - chrono::Duration::minutes(age_min)),

@@ -79,6 +79,149 @@ fn codex_deduplicates_archived_copy_of_live_session() {
     assert_eq!(snap.sessions[0].id, "codex-aaaa");
     assert_eq!(snap.sessions[0].tokens.total(), 3700);
     assert_eq!(snap.sessions[0].project.as_deref(), Some("alpha"));
+    assert_eq!(snap.sessions[0].reasoning_effort.as_deref(), Some("high"));
+}
+
+#[test]
+fn codex_effort_tracks_turns_without_waiting_for_tokens() {
+    use serde_json::json;
+    use std::io::Write;
+
+    let dir = std::env::temp_dir().join(format!("lmtop-effort-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("rollout-live.jsonl");
+    let source = fixture("codex/basic/sessions/2026/07/17/rollout-2026-07-17T10-00-00-aaaa.jsonl");
+    std::fs::copy(&source, &path).unwrap();
+    let mut collector = CodexCollector::with_dirs(vec![dir.clone()]);
+    let initial = collector.scan(&ctx());
+    assert_eq!(
+        initial.sessions[0].reasoning_effort.as_deref(),
+        Some("high")
+    );
+
+    for (payload, expected) in [
+        (json!({"model": "gpt-5.5", "effort": "low"}), Some("low")),
+        (
+            json!({"model": "gpt-5.6-terra", "effort": "xhigh"}),
+            Some("xhigh"),
+        ),
+        (json!({"model": "gpt-5.6-terra"}), None),
+        (
+            json!({"model": "gpt-5.6-terra", "effort": "future-level"}),
+            Some("future-level"),
+        ),
+        (json!({"model": "gpt-5.6-terra", "effort": null}), None),
+        (
+            json!({"model": "gpt-5.6-terra", "effort": "high"}),
+            Some("high"),
+        ),
+        (json!({"model": "gpt-5.6-terra", "effort": "  "}), None),
+        (json!({"model": "gpt-5.6-terra", "effort": 42}), None),
+    ] {
+        let line = json!({"timestamp": "2026-07-17T11:01:00Z", "type": "turn_context", "payload": payload});
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        writeln!(file, "{line}").unwrap();
+        drop(file);
+        let snap = collector.scan(&ctx());
+        let session = &snap.sessions[0];
+        assert_eq!(session.reasoning_effort.as_deref(), expected);
+        assert_eq!(
+            session.model.as_ref().unwrap().raw,
+            payload["model"].as_str().unwrap()
+        );
+        assert_eq!(session.tokens, initial.sessions[0].tokens);
+        let mut serialized = serde_json::to_value(session).unwrap();
+        assert_eq!(serialized["reasoning_effort"], json!(expected));
+        // Snapshots written before the field existed remain readable.
+        serialized
+            .as_object_mut()
+            .unwrap()
+            .remove("reasoning_effort");
+        let old: lmtop::domain::SessionUsage = serde_json::from_value(serialized).unwrap();
+        assert_eq!(old.reasoning_effort, None);
+    }
+
+    // An archived copy must not overwrite the owner's current metadata.
+    std::fs::copy(source, dir.join("rollout-duplicate.jsonl")).unwrap();
+    let snap = collector.scan(&ctx());
+    assert_eq!(snap.sessions.len(), 1);
+    assert_eq!(snap.sessions[0].reasoning_effort, None);
+    assert_eq!(
+        snap.sessions[0].model.as_ref().unwrap().raw,
+        "gpt-5.6-terra"
+    );
+    assert_eq!(snap.sessions[0].tokens, initial.sessions[0].tokens);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn effort_renders_in_session_table_and_detail() {
+    use lmtop::app::App;
+    use lmtop::tui::{
+        theme::Theme,
+        widgets::{render_session_detail, render_sessions},
+    };
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let now = ctx().now;
+    let app = App::new(now, 5);
+    let theme = Theme::new(false);
+    let snap = codex("codex/basic/sessions").scan(&ctx());
+    let mut session = snap.sessions[0].clone();
+    for effort in [Some("xhigh"), None] {
+        session.reasoning_effort = effort.map(str::to_owned);
+        for width in [50, 80, 88, 120] {
+            let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            terminal
+                .draw(|frame| {
+                    render_sessions(
+                        frame,
+                        frame.area(),
+                        &[&session],
+                        &app,
+                        &theme,
+                        now,
+                        false,
+                        width < 80,
+                    )
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let row = |y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            };
+            let header = row(1);
+            let effort_col = header.find("Effort").unwrap();
+            assert_eq!(
+                row(2)[effort_col..].split_whitespace().next(),
+                Some(effort.unwrap_or("-")),
+                "width {width}"
+            );
+            assert!(row(2).contains("3.7k"), "width {width}: {}", row(2));
+        }
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| render_session_detail(frame, frame.area(), &session, &theme, now))
+            .unwrap();
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("thinking"));
+        assert!(rendered.contains(if effort.is_some() {
+            "xhigh effort"
+        } else {
+            "not reported"
+        }));
+    }
 }
 
 #[test]
@@ -354,6 +497,7 @@ fn claude_survives_corrupt_and_truncated_lines() {
 #[test]
 fn claude_session_metadata_is_content_free() {
     let snap = claude("claude/basic").scan(&ctx());
+    assert!(snap.sessions.iter().all(|s| s.reasoning_effort.is_none()));
     let json = serde_json::to_string(&snap).unwrap();
     // Prompt bodies from fixture lines must never reach the snapshot.
     assert!(!json.contains("redacted synthetic fixture"));
@@ -401,6 +545,7 @@ fn codex_incremental_ingestion_of_growing_file() {
     let mut collector = CodexCollector::with_dirs(vec![dir.join("sessions")]);
     let snap = collector.scan(&ctx());
     assert_eq!(snap.week.as_ref().unwrap().tokens.total(), 1100);
+    assert_eq!(snap.sessions[0].reasoning_effort, None);
 
     // Append a complete line plus the beginning of the next one.
     use std::io::Write;

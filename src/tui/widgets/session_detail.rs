@@ -25,7 +25,7 @@ pub fn render_session_detail(
         v.sort_by_key(|(_, t)| std::cmp::Reverse(t.total()));
         v
     };
-    let height = (13 + models.len() as u16).min(area.height);
+    let height = (14 + models.len() as u16).min(area.height);
     let width = 76u16.min(area.width.saturating_sub(2)).max(40);
     let rect = centered(area, width, height);
     frame.render_widget(Clear, rect);
@@ -80,6 +80,18 @@ pub fn render_session_detail(
         Span::styled(
             format!("  id {}", session.id.chars().take(20).collect::<String>()),
             theme.dim(),
+        ),
+    ]));
+
+    lines.push(Line::from(vec![
+        label("thinking"),
+        Span::styled(
+            session
+                .reasoning_effort
+                .as_ref()
+                .map(|effort| format!("{effort} effort"))
+                .unwrap_or_else(|| "not reported".into()),
+            theme.text(),
         ),
     ]));
 

@@ -211,6 +211,11 @@ The mouse works too: click to focus a panel, click a session to select it
 (again to open its detail), click the table header to change sort, and
 scroll to move through sessions or pan the chart.
 
+The sessions table shows an **Effort** column for the latest Codex rollout
+turn's reasoning setting. Press Enter on a session to see it in the detail
+popup as well. Missing effort is shown as `-` / "not reported"; Claude and
+Codex SQLite-only sessions do not currently report it in lmtop.
+
 ## Planner view (key 4)
 
 The planner answers "will it last?" head-on: for every quota window it

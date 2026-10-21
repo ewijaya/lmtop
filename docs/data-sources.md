@@ -33,7 +33,12 @@ only), CLI version (doctor). `instructions` and git metadata are ignored.
 ```
 
 Used for: attributing subsequent token deltas to the correct model,
-including mid-session model switches.
+including mid-session model switches, and showing the latest turn's
+reasoning effort in the sessions table and detail popup. Missing, null,
+or empty effort values are shown as unavailable; they never inherit a
+previous turn's effort. JSON snapshots expose this as `reasoning_effort`.
+Effort is currently collected only from Codex rollout logs; Claude and
+Codex SQLite-only sessions show it as unavailable.
 
 ### `event_msg` with `payload.type == "token_count"`
 

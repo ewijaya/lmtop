@@ -7,8 +7,8 @@
 //! docs/data-sources.md):
 //! - `session_meta` line: `payload.id`, `payload.timestamp`, `payload.cwd`,
 //!   `payload.cli_version`.
-//! - `turn_context` line: `payload.model`, changing mid-session on model
-//!   switches.
+//! - `turn_context` line: `payload.model` and `payload.effort`, which can
+//!   change mid-session.
 //! - `event_msg` / `payload.type == "token_count"`:
 //!   `payload.info.total_token_usage` (cumulative), `.last_token_usage`
 //!   (per turn), `.model_context_window`, and `payload.rate_limits` with
@@ -176,10 +176,27 @@ impl CodexCollector {
         match line_type {
             "session_meta" => self.ingest_session_meta(path, payload),
             "turn_context" => {
-                if let Some(model) = payload.get("model").and_then(Value::as_str) {
-                    self.files.entry(path.to_path_buf()).or_default().model =
-                        Some(ModelIdentity::normalize(model));
+                let state = self.files.entry(path.to_path_buf()).or_default();
+                if state.duplicate {
+                    return;
                 }
+                if let Some(model) = payload.get("model").and_then(Value::as_str) {
+                    state.model = Some(ModelIdentity::normalize(model));
+                }
+                let session_id = state
+                    .session_id
+                    .clone()
+                    .unwrap_or_else(|| fallback_session_id(path));
+                let record = self.store.session_mut(&session_id);
+                record.last_model = state.model.clone();
+                // A new turn without effort must not inherit the previous
+                // turn's setting (including after a model switch).
+                record.reasoning_effort = payload
+                    .get("effort")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|effort| !effort.is_empty())
+                    .map(str::to_owned);
             }
             "event_msg" if payload.get("type").and_then(Value::as_str) == Some("token_count") => {
                 self.ingest_token_count(path, payload, timestamp, ctx);

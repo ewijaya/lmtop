@@ -21,6 +21,9 @@ pub struct SessionUsage {
     pub id: String,
     /// Last model observed in the session.
     pub model: Option<ModelIdentity>,
+    /// Reasoning effort reported for the latest turn, when available.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     /// Project directory name (basename of the session cwd), for display.
     pub project: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
