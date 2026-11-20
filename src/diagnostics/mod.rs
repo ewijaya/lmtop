@@ -2,6 +2,7 @@
 
 use crate::domain::{Capability, Provider, ProviderSnapshot};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Replace the user's home directory with `~` in any user-visible path or
@@ -45,6 +46,85 @@ pub struct ProviderDoctor {
     pub parse_errors: u64,
     pub last_data_at: Option<String>,
     pub capabilities: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) opencode: Option<OpenCodeDoctor>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub(crate) struct OpenCodeDoctor {
+    pub database: Option<String>,
+    pub found: bool,
+    pub readable: bool,
+    pub version: Option<String>,
+    pub migration: Option<String>,
+    pub usage: Option<OpenCodeUsageDoctor>,
+    pub hints: Vec<&'static str>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub(crate) struct OpenCodeUsageDoctor {
+    pub sessions: u64,
+    pub archived: u64,
+    pub counted: BTreeMap<String, MessageTally>,
+    pub skipped: BTreeMap<String, MessageTally>,
+    pub failed_messages: usize,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub(crate) struct MessageTally {
+    pub messages: usize,
+    pub tokens: u128,
+}
+
+impl OpenCodeDoctor {
+    fn render(&self, out: &mut String) {
+        let state = match (self.found, self.readable) {
+            (true, true) => "found, read-only OK",
+            (true, false) => "found, not read",
+            (false, _) => "not found",
+        };
+        out.push_str(&format!(
+            "  database:         {} ({state})\n  opencode version: {}   schema: {}\n",
+            self.database.as_deref().unwrap_or("none"),
+            self.version.as_deref().unwrap_or("unavailable"),
+            self.migration.as_deref().unwrap_or("unavailable"),
+        ));
+        if let Some(usage) = &self.usage {
+            out.push_str(&format!(
+                "  sessions (48 h):  {} ({} archived)\n",
+                usage.sessions, usage.archived,
+            ));
+            for (label, tallies) in [("counted", &usage.counted), ("skipped", &usage.skipped)] {
+                let total = tallies.values().map(|t| t.messages).sum::<usize>();
+                let by_upstream = tallies
+                    .iter()
+                    .map(|(upstream, tally)| {
+                        let mirrored = if label == "skipped" && upstream == "claude-agent" {
+                            ", mirrored in Claude Code transcripts"
+                        } else {
+                            ""
+                        };
+                        format!(
+                            "{upstream}: {}, {} tokens{mirrored}",
+                            tally.messages, tally.tokens
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let details = if by_upstream.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({by_upstream})")
+                };
+                out.push_str(&format!("  messages {label}: {total}{details}\n"));
+            }
+            out.push_str(&format!("  failed messages:  {}\n", usage.failed_messages));
+        }
+        out.push_str("  quota:            none\n");
+        for hint in &self.hints {
+            out.push_str(&format!("  hint:             {hint}\n"));
+        }
+    }
 }
 
 impl ProviderDoctor {
@@ -71,6 +151,7 @@ impl ProviderDoctor {
                 .iter()
                 .map(|c| c.label().to_string())
                 .collect(),
+            opencode: None,
         }
     }
 }
@@ -88,25 +169,29 @@ impl DoctorReport {
             out.push_str(&format!("[{}]\n", d.provider.display_name()));
             out.push_str(&format!("  enabled:        {}\n", p.enabled));
             out.push_str(&format!("  installed:      {}\n", d.installed));
-            if let Some(v) = &d.cli_version {
-                out.push_str(&format!("  cli version:    {v}\n"));
-            }
-            if d.session_dirs.is_empty() {
-                out.push_str("  session dirs:   none found\n");
+            if let Some(details) = &p.opencode {
+                details.render(&mut out);
             } else {
-                for dir in &d.session_dirs {
-                    out.push_str(&format!("  session dir:    {dir}\n"));
+                if let Some(v) = &d.cli_version {
+                    out.push_str(&format!("  cli version:    {v}\n"));
                 }
-            }
-            out.push_str(&format!("  session files:  {}\n", d.session_files));
-            out.push_str(&format!(
-                "  auth:           {}\n",
-                if d.auth_present {
-                    "present (not read)"
+                if d.session_dirs.is_empty() {
+                    out.push_str("  session dirs:   none found\n");
                 } else {
-                    "not found"
+                    for dir in &d.session_dirs {
+                        out.push_str(&format!("  session dir:    {dir}\n"));
+                    }
                 }
-            ));
+                out.push_str(&format!("  session files:  {}\n", d.session_files));
+                out.push_str(&format!(
+                    "  auth:           {}\n",
+                    if d.auth_present {
+                        "present (not read)"
+                    } else {
+                        "not found"
+                    }
+                ));
+            }
             out.push_str(&format!("  status:         {}\n", p.status));
             if let Some(m) = &p.message {
                 out.push_str(&format!("  note:           {m}\n"));

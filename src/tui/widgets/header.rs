@@ -71,41 +71,30 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
         format!("{clock} ")
     };
     let right = Line::from(Span::styled(right_text, theme.dim())).right_aligned();
+    let show_clock = left.width() + right.width() <= area.width as usize;
     frame.render_widget(Paragraph::new(left), area);
-    frame.render_widget(Paragraph::new(right), area);
+    if show_clock {
+        frame.render_widget(Paragraph::new(right), area);
+    }
 }
 
 pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, now: DateTime<Utc>) {
-    let keys: &[(&str, &str)] = if area.width < 80 {
-        &[("1-4", "view"), ("?", "help"), ("q", "quit")]
-    } else if area.width < 110 {
-        &[
-            ("1", "codex"),
-            ("2", "claude"),
-            ("3", "all"),
-            ("4", "plan"),
-            ("t", "theme"),
-            ("?", "help"),
-            ("Enter", "detail"),
-            ("/", "filter"),
-            ("q", "quit"),
-        ]
-    } else {
-        &[
-            ("1", "codex"),
-            ("2", "claude"),
-            ("3", "all"),
-            ("4", "planner"),
-            ("t", "theme"),
-            ("?", "help"),
-            ("Enter", "detail"),
-            ("o", "sort"),
-            ("/", "filter"),
-            ("r", "refresh"),
-            ("p", "pause"),
-            ("q", "quit"),
-        ]
-    };
+    let compact_keys = [("1-5", "view"), ("?", "help"), ("q", "quit")];
+    let wide_keys = [
+        ("1", "codex"),
+        ("2", "claude"),
+        ("3", "all"),
+        ("4", "planner"),
+        ("5", "opencode"),
+        ("t", "theme"),
+        ("?", "help"),
+        ("Enter", "detail"),
+        ("o", "sort"),
+        ("/", "filter"),
+        ("r", "refresh"),
+        ("p", "pause"),
+        ("q", "quit"),
+    ];
     // Right side first: freshness per provider is the higher-value half,
     // so it claims its width and the key hints take what is left.
     let mut right = Vec::new();
@@ -134,10 +123,16 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, no
     // reserved so the last hint never sits flush against the freshness
     // text (its own trailing space alone reads as a collision).
     let key_budget = area.width.saturating_sub(right_width + 1);
+    let width = |(key, label): &(&str, &str)| (key.len() + label.len() + 3) as u16;
+    let keys: &[(&str, &str)] = if wide_keys[..5].iter().map(width).sum::<u16>() <= key_budget {
+        &wide_keys
+    } else {
+        &compact_keys
+    };
     let mut spans = Vec::new();
     let mut used = 0u16;
-    for (key, label) in keys {
-        let cost = (key.chars().count() + label.chars().count() + 3) as u16;
+    for entry @ (key, label) in keys {
+        let cost = width(entry);
         if used + cost > key_budget {
             break;
         }
@@ -163,7 +158,7 @@ mod tests {
 
     fn app_with_providers(now: DateTime<Utc>) -> App {
         let mut app = App::new(now, 5);
-        for provider in [Provider::Codex, Provider::Claude] {
+        for provider in [Provider::Codex, Provider::Claude, Provider::OpenCode] {
             let snap = ProviderSnapshot::empty(
                 provider,
                 CollectorHealth {
@@ -219,5 +214,14 @@ mod tests {
         let row = footer_row(200);
         assert!(row.contains("codex"), "wide footer lost its hints: {row:?}");
         assert!(row.contains("planner"), "wide footer lost hints: {row:?}");
+        assert!(
+            row.contains("5 opencode"),
+            "wide footer lost OpenCode: {row:?}"
+        );
+        let row = footer_row(80);
+        assert!(
+            row.contains("1-5") && row.contains("OpenCode fresh"),
+            "{row:?}"
+        );
     }
 }

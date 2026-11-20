@@ -102,12 +102,29 @@ pub fn render_provider_panel(
     frame.render_widget(block, area);
 
     let Some(snap) = snapshot else {
+        let message = if provider == Provider::OpenCode {
+            "unavailable (collector not running yet)"
+        } else {
+            "starting…"
+        };
         frame.render_widget(
-            Paragraph::new(Line::from(Span::styled("starting…", theme.dim()))),
+            Paragraph::new(Line::from(Span::styled(message, theme.dim()))),
             inner,
         );
         return;
     };
+    if provider == Provider::OpenCode && snap.week.is_none() {
+        let message = snap.health.message.as_deref().unwrap_or("no database data");
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                format!("Usage unavailable: {message}"),
+                theme.dim(),
+            ))
+            .wrap(ratatui::widgets::Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
 
     let mut lines: Vec<Line> = Vec::new();
     let bar_width = (inner.width as usize).saturating_sub(44).clamp(6, 20);

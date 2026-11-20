@@ -37,13 +37,14 @@ pub fn render_weekly(
     frame.render_widget(block, area);
 
     let mut lines: Vec<Line> = Vec::new();
+    let compact = inner.height as usize <= 2 * providers.len();
     let mut week_range: Option<String> = None;
     for (provider, snap) in providers {
         let Some(snap) = snap else { continue };
         let Some(week) = &snap.week else {
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("{:<7}", provider.display_name()),
+                    format!("{:<9}", provider.display_name()),
                     Style::default().fg(theme.provider(*provider)),
                 ),
                 Span::styled("unavailable", theme.dim()),
@@ -61,7 +62,7 @@ pub fn render_weekly(
         }
         lines.push(Line::from(vec![
             Span::styled(
-                format!("{:<7}", provider.display_name()),
+                format!("{:<9}", provider.display_name()),
                 Style::default()
                     .fg(theme.provider(*provider))
                     .add_modifier(ratatui::style::Modifier::BOLD),
@@ -72,6 +73,9 @@ pub fn render_weekly(
             ),
             Span::styled(format!("({} sessions)", week.sessions), theme.dim()),
         ]));
+        if compact {
+            continue;
+        }
         let unattr = if week.tokens.unattributed > 0 {
             format!("  unattr {}", fmt_tokens(week.tokens.unattributed))
         } else {
@@ -113,13 +117,13 @@ pub fn render_breakdown(
     frame.render_widget(block, area);
 
     let mut rows: Vec<(Provider, &ModelWeekUsage)> = Vec::new();
-    let mut grand_total: u64 = 0;
+    let mut grand_total: u128 = 0;
     for (provider, snap) in providers {
         let Some(week) = snap.as_ref().and_then(|s| s.week.as_ref()) else {
             continue;
         };
         for usage in week.by_model.values() {
-            grand_total += usage.tokens.total();
+            grand_total += u128::from(usage.tokens.total());
             rows.push((*provider, usage));
         }
     }
@@ -133,7 +137,7 @@ pub fn render_breakdown(
         return;
     }
 
-    let name_width = 14usize;
+    let name_width = if inner.width >= 43 { 25 } else { 14 };
     let bar_width = (inner.width as usize)
         .saturating_sub(name_width + 18)
         .clamp(5, 20);
@@ -143,8 +147,12 @@ pub fn render_breakdown(
         .map(|(_, usage)| {
             let pct = usage.tokens.total() as f64 / grand_total as f64 * 100.0;
             let color = theme.model(usage.model.family);
-            let mut name = usage.model.display.clone();
-            name.truncate(name_width);
+            let display = if name_width < 25 && usage.model.display == "auxiliary (model unknown)" {
+                "aux (unknown)"
+            } else {
+                &usage.model.display
+            };
+            let name: String = display.chars().take(name_width).collect();
             Line::from(vec![
                 Span::styled(format!("{name:<name_width$}"), Style::default().fg(color)),
                 Span::styled(bar(bar_width, pct, theme.ascii), Style::default().fg(color)),

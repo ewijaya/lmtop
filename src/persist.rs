@@ -368,6 +368,36 @@ mod tests {
     }
 
     #[test]
+    fn reads_both_opencode_and_existing_provider_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.jsonl");
+        let now: DateTime<Utc> = "2026-07-17T10:05:30Z".parse().unwrap();
+        std::fs::write(
+            &path,
+            "{\"t\":\"rate\",\"at\":\"2026-07-17T10:03:00Z\",\"p\":\"claude\",\"in\":8,\"out\":2}\n",
+        ).unwrap();
+        let mut store = HistoryStore::open(path.clone(), 30, now).unwrap();
+        let mut snap = snapshot_with(vec![sample("2026-07-17T10:04:00Z", 100, 20)], vec![]);
+        snap.provider = Provider::OpenCode;
+        store.record(&snap, now);
+        let reloaded = HistoryStore::open(path.clone(), 30, now).unwrap();
+        let since = "2026-07-17T10:00:00Z".parse().unwrap();
+        assert_eq!(
+            reloaded.rate_series(Provider::OpenCode, since, now)[0].input_tokens,
+            100
+        );
+        assert_eq!(
+            reloaded.rate_series(Provider::Claude, since, now)[0].input_tokens,
+            8
+        );
+        assert!(
+            std::fs::read_to_string(path)
+                .unwrap()
+                .contains(r#""p":"opencode""#)
+        );
+    }
+
+    #[test]
     fn quota_changes_are_appended_and_duplicates_skipped() {
         let dir = std::env::temp_dir().join(format!("lmtop-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

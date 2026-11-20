@@ -176,7 +176,7 @@ pub fn render_sessions(
 
     let widths: Vec<Constraint> = if narrow {
         vec![
-            Constraint::Length(7),
+            Constraint::Length(9),
             Constraint::Min(10),
             Constraint::Length(7),
             Constraint::Length(8),

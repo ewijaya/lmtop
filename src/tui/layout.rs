@@ -29,10 +29,11 @@ pub fn too_small(area: Rect) -> bool {
 pub fn combined(area: Rect, provider_count: usize) -> CombinedLayout {
     let provider_count = provider_count.clamp(1, 4);
     let narrow = area.width < NARROW_WIDTH;
-    let short = area.height < 32;
-    let panel_h = if short { 7 } else { 9 };
-    let chart_h = if short { 7 } else { 9 };
-    let bottom_h = if short { 7 } else { 9 };
+    let (panel_h, chart_h, bottom_h) = match area.height {
+        ..=24 => (5, 5, 6),
+        25..=31 => (7, 7, 7),
+        _ => (9, 9, 9),
+    };
 
     if narrow {
         // Providers stack vertically, one region each.
@@ -111,13 +112,14 @@ pub struct ProviderLayout {
     pub narrow: bool,
 }
 
-/// Layout for the single-provider views (keys 1 and 2).
+/// Layout for the single-provider views (keys 1, 2 and 5).
 pub fn provider(area: Rect) -> ProviderLayout {
     let narrow = area.width < NARROW_WIDTH;
-    let short = area.height < 32;
-    let panel_h = if short { 8 } else { 10 };
-    let chart_h = if short { 7 } else { 10 };
-    let bottom_h = if short { 7 } else { 10 };
+    let (panel_h, chart_h, bottom_h) = match area.height {
+        ..=24 => (6, 5, 5),
+        25..=31 => (8, 7, 7),
+        _ => (10, 10, 10),
+    };
     let rows = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(panel_h),
@@ -236,6 +238,13 @@ mod tests {
         assert_eq!(l.providers.len(), 2);
         assert!(l.providers[1].y > l.providers[0].y);
         assert!(l.footer.y >= l.providers[1].bottom());
+    }
+
+    #[test]
+    fn three_providers_keep_room_for_sessions_at_eighty_by_twenty_four() {
+        let area = Rect::new(0, 0, 80, 24);
+        assert!(combined(area, 3).sessions.height >= 5);
+        assert!(provider(area).sessions.height >= 5);
     }
 
     #[test]

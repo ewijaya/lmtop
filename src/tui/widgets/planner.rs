@@ -103,7 +103,7 @@ pub fn render_planner(
         QuotaWindowKind::Unknown => 2,
     });
 
-    if windows.is_empty() {
+    if windows.is_empty() && provider != Provider::OpenCode {
         let reason = if snap.supports(Capability::ProviderQuota) {
             "no recent provider quota data — try --live"
         } else {
@@ -290,6 +290,15 @@ pub fn render_planner(
             .num_seconds() as f64;
         let elapsed = now.signed_duration_since(week.week_start).num_seconds() as f64;
         let elapsed_pct = (elapsed / span.max(1.0) * 100.0).clamp(0.0, 100.0);
+        if provider == Provider::OpenCode {
+            let pacing = format!(
+                "Cal week · observed {} across {} sessions · {elapsed_pct:.0}% elapsed",
+                fmt_tokens(week.tokens.total()),
+                week.sessions
+            );
+            frame.render_widget(Paragraph::new(Span::styled(pacing, theme.text())), inner);
+            return;
+        }
         lines.push(Line::from(vec![
             Span::styled(format!("{:<10}", "Cal week"), theme.title()),
             Span::styled("elapsed  ", theme.dim()),

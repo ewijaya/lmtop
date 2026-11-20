@@ -3,7 +3,7 @@
 //! per-model split. Opened with Enter on the session table.
 
 use super::bar;
-use crate::domain::{ModelIdentity, SessionState, SessionUsage};
+use crate::domain::{ModelIdentity, Provider, SessionState, SessionUsage};
 use crate::tui::layout::centered;
 use crate::tui::theme::{Theme, fmt_age, fmt_tokens};
 use chrono::{DateTime, Utc};
@@ -25,7 +25,8 @@ pub fn render_session_detail(
         v.sort_by_key(|(_, t)| std::cmp::Reverse(t.total()));
         v
     };
-    let height = (14 + models.len() as u16).min(area.height);
+    let height = (14 + models.len() as u16 + u16::from(session.provider == Provider::OpenCode))
+        .min(area.height);
     let width = 76u16.min(area.width.saturating_sub(2)).max(40);
     let rect = centered(area, width, height);
     frame.render_widget(Clear, rect);
@@ -82,6 +83,16 @@ pub fn render_session_detail(
             theme.dim(),
         ),
     ]));
+
+    if session.provider == Provider::OpenCode {
+        lines.push(Line::from(vec![
+            label("upstream"),
+            Span::styled(
+                session.upstream.as_deref().unwrap_or("unavailable"),
+                theme.text(),
+            ),
+        ]));
+    }
 
     lines.push(Line::from(vec![
         label("thinking"),
@@ -159,6 +170,16 @@ pub fn render_session_detail(
                 ),
             ]));
         }
+        None if session.provider == Provider::OpenCode => {
+            let context = session.context_tokens.map_or_else(
+                || "unavailable".into(),
+                |tokens| format!("{} tokens (window unavailable)", fmt_tokens(tokens)),
+            );
+            lines.push(Line::from(vec![
+                label("context"),
+                Span::styled(context, theme.dim()),
+            ]));
+        }
         None => {
             lines.push(Line::from(vec![
                 label("context"),
@@ -209,8 +230,7 @@ pub fn render_session_detail(
             let identity = ModelIdentity::normalize(raw);
             let pct = tokens.total() as f64 / grand as f64 * 100.0;
             let color = theme.model(identity.family);
-            let mut name = identity.display;
-            name.truncate(16);
+            let name: String = identity.display.chars().take(16).collect();
             lines.push(Line::from(vec![
                 Span::styled(format!("  {name:<16}"), Style::default().fg(color)),
                 Span::styled(bar(bar_width, pct, theme.ascii), Style::default().fg(color)),

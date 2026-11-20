@@ -2,8 +2,9 @@
 //! needed for accounting; never return the message JSON itself.
 
 use super::store::{UsageStore, project_name};
-use super::{Collector, ScanContext};
+use super::{Collector, SESSION_LOOKBACK_HOURS, ScanContext};
 use crate::config::OpenCodeConfig;
+use crate::diagnostics::{OpenCodeDoctor, OpenCodeUsageDoctor, redacted_dirs};
 use crate::domain::{
     Capability, CollectorHealth, CollectorStatus, ModelIdentity, Provider, ProviderSnapshot,
     TokenCounts,
@@ -12,6 +13,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, Row};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::slice;
 use std::time::Duration;
 
 const CAPABILITIES: [Capability; 5] = [
@@ -121,6 +123,16 @@ struct Message {
     tokens: Option<TokenCounts>,
 }
 
+impl Message {
+    fn failed_without_usage(&self) -> bool {
+        self.failed
+            && self
+                .tokens
+                .as_ref()
+                .is_none_or(|tokens| *tokens == TokenCounts::default())
+    }
+}
+
 struct LedgerEntry {
     created: DateTime<Utc>,
     reported: TokenCounts,
@@ -178,7 +190,12 @@ impl OpenCodeCollector {
         }
     }
 
-    fn scan_db(&mut self, path: &Path, ctx: &ScanContext) -> Result<(), ReadError> {
+    fn scan_db(
+        &mut self,
+        path: &Path,
+        ctx: &ScanContext,
+        mut doctor: Option<&mut OpenCodeDoctor>,
+    ) -> Result<(), ReadError> {
         let mut db = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -186,10 +203,19 @@ impl OpenCodeCollector {
         db.busy_timeout(BUSY_TIMEOUT)?;
         // Read messages and session counters from the same SQLite snapshot.
         let db = db.transaction()?;
-        if !has_columns(&db, "PRAGMA table_info(session_v2)", SESSION_COLUMNS)?
-            || !has_columns(&db, "PRAGMA table_info(session_message)", MESSAGE_COLUMNS)?
-        {
-            return Err(ReadError::Unsupported(latest_migration(&db)?));
+        let supported = has_columns(&db, "PRAGMA table_info(session_v2)", SESSION_COLUMNS)?
+            && has_columns(&db, "PRAGMA table_info(session_message)", MESSAGE_COLUMNS)?;
+        let migration = if !supported || doctor.is_some() {
+            latest_migration(&db)?
+        } else {
+            None
+        };
+        if let Some(details) = doctor.as_deref_mut() {
+            details.readable = true;
+            details.migration.clone_from(&migration);
+        }
+        if !supported {
+            return Err(ReadError::Unsupported(migration));
         }
 
         let cutoff = ctx.retention_cutoff();
@@ -208,9 +234,12 @@ impl OpenCodeCollector {
                     tokens: read_tokens(row, 2)?.ok_or(rusqlite::Error::InvalidQuery)?,
                 })
             })?
-            .filter(|r| !r.as_ref().is_ok_and(|r| r.tokens.is_zero()))
+            .filter(|r| !r.as_ref().is_ok_and(|r| r.tokens == TokenCounts::default()))
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
+        if let Some(details) = doctor {
+            self.populate_doctor(&db, ctx.now, &messages, details)?;
+        }
         // Rebuild only on changes or when entries age out. Replacing the
         // derived store lets provisional residuals shrink as messages arrive.
         if self.high_water.is_some()
@@ -253,7 +282,7 @@ impl OpenCodeCollector {
         messages.sort_unstable_by(|a, b| (a.completed, &a.id).cmp(&(b.completed, &b.id)));
         for m in messages {
             let Some(at) = m.completed else { continue };
-            if m.failed && m.tokens.as_ref().is_none_or(TokenCounts::is_zero) {
+            if m.failed_without_usage() {
                 failed_messages += 1;
                 continue;
             }
@@ -293,6 +322,7 @@ impl OpenCodeCollector {
             record.last_activity = Some(at);
             record.project.clone_from(&row.project);
             record.reasoning_effort = m.effort;
+            record.upstream = Some(upstream);
             record.context_tokens = Some(reported.total_input());
             ledger.insert(
                 m.id,
@@ -311,24 +341,103 @@ impl OpenCodeCollector {
         self.failed_messages = failed_messages;
         Ok(())
     }
-}
 
-impl Collector for OpenCodeCollector {
-    fn provider(&self) -> Provider {
-        Provider::OpenCode
+    fn populate_doctor(
+        &self,
+        db: &Connection,
+        now: DateTime<Utc>,
+        messages: &[Message],
+        doctor: &mut OpenCodeDoctor,
+    ) -> rusqlite::Result<()> {
+        let cutoff = now - chrono::Duration::hours(SESSION_LOOKBACK_HOURS);
+        doctor.version = db.query_row(
+            "SELECT version FROM session_v2 WHERE version IS NOT NULL ORDER BY time_updated DESC LIMIT 1",
+            [],
+            |row| row.get::<_, String>(0),
+        ).optional()?.and_then(|s| display_identifier(&s));
+        let (sessions, archived) = db.query_row(
+            "SELECT count(*), count(time_archived) FROM session_v2 WHERE time_updated >= ?1",
+            [cutoff.timestamp_millis()],
+            |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)? as u64)),
+        )?;
+        let mut usage = OpenCodeUsageDoctor {
+            sessions,
+            archived,
+            ..Default::default()
+        };
+        for message in messages
+            .iter()
+            .filter(|m| m.completed.is_some_and(|at| at >= cutoff))
+        {
+            if message.failed_without_usage() {
+                usage.failed_messages += 1;
+                continue;
+            }
+            let (Some(upstream), Some(tokens)) = (&message.upstream, &message.tokens) else {
+                continue;
+            };
+            let counters = if self.skip_upstreams.contains(upstream) {
+                &mut usage.skipped
+            } else {
+                &mut usage.counted
+            };
+            let entry = counters
+                .entry(display_identifier(upstream).unwrap_or_else(|| "unavailable".into()))
+                .or_default();
+            entry.messages += 1;
+            entry.tokens += [
+                tokens.input,
+                tokens.cached_input,
+                tokens.cache_creation,
+                tokens.output,
+            ]
+            .into_iter()
+            .map(u128::from)
+            .sum::<u128>();
+        }
+        doctor.usage = Some(usage);
+        Ok(())
     }
 
-    fn scan(&mut self, ctx: &ScanContext) -> ProviderSnapshot {
+    fn find_database(&self) -> Option<&PathBuf> {
+        self.paths.iter().find(|p| p.try_exists().unwrap_or(true))
+    }
+
+    pub(crate) fn scan_for_doctor(
+        &mut self,
+        ctx: &ScanContext,
+    ) -> (ProviderSnapshot, OpenCodeDoctor) {
+        let path = self.find_database();
+        let mut details = OpenCodeDoctor {
+            database: path
+                .or_else(|| self.paths.first())
+                .and_then(|p| redacted_dirs(slice::from_ref(p)).pop()),
+            found: path.is_some(),
+            ..Default::default()
+        };
+        let snapshot = self.scan_impl(ctx, Some(&mut details));
+        if snapshot.week.is_none() {
+            details.usage = None;
+        }
+        (snapshot, details)
+    }
+
+    pub(crate) fn skips_claude_agent(&self) -> bool {
+        self.skip_upstreams
+            .iter()
+            .any(|upstream| upstream == "claude-agent")
+    }
+
+    fn scan_impl(
+        &mut self,
+        ctx: &ScanContext,
+        doctor: Option<&mut OpenCodeDoctor>,
+    ) -> ProviderSnapshot {
         let result = if !self.enabled {
             Err(CollectorHealth::disabled())
         } else {
-            let path = self
-                .paths
-                .iter()
-                .find(|p| p.try_exists().unwrap_or(true))
-                .cloned();
-            match path {
-                Some(path) => self.scan_db(&path, ctx).map_err(read_health),
+            match self.find_database().cloned() {
+                Some(path) => self.scan_db(&path, ctx, doctor).map_err(read_health),
                 None => Err(CollectorHealth::unavailable("no OpenCode database found")),
             }
         };
@@ -350,6 +459,25 @@ impl Collector for OpenCodeCollector {
             Err(health) => ProviderSnapshot::empty(self.provider(), health),
         }
     }
+}
+
+impl Collector for OpenCodeCollector {
+    fn provider(&self) -> Provider {
+        Provider::OpenCode
+    }
+
+    fn scan(&mut self, ctx: &ScanContext) -> ProviderSnapshot {
+        self.scan_impl(ctx, None)
+    }
+}
+
+fn display_identifier(id: &str) -> Option<String> {
+    (!id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.+-".contains(&b)))
+    .then(|| id.to_owned())
 }
 
 fn database_candidates(configured: Option<&Path>) -> Vec<PathBuf> {

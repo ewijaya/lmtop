@@ -360,7 +360,8 @@ fn render_line(snapshot: &UsageSnapshot, color: bool, now: chrono::DateTime<Utc>
         match p {
             Provider::Codex => "\x1b[38;5;75m",
             Provider::Claude => "\x1b[38;5;208m",
-            Provider::OpenCode | Provider::Custom => "\x1b[38;5;79m",
+            Provider::OpenCode => "\x1b[38;5;141m",
+            Provider::Custom => "\x1b[38;5;79m",
         }
     };
     let paint = |code: &str, text: &str| -> String {
@@ -373,8 +374,12 @@ fn render_line(snapshot: &UsageSnapshot, color: bool, now: chrono::DateTime<Utc>
 
     let mut parts: Vec<String> = Vec::new();
     for (provider, snap) in &snapshot.providers {
-        // The OpenCode status-line segment is introduced with its UI.
         if *provider == Provider::OpenCode {
+            if let Some(week) = &snap.week {
+                let name = paint(provider_color(*provider), provider.display_name());
+                let tokens = crate::tui::theme::fmt_tokens(week.tokens.total());
+                parts.push(format!("{name} wk {tokens} tok"));
+            }
             continue;
         }
         let mut fields = vec![paint(provider_color(*provider), provider.display_name())];
@@ -448,6 +453,37 @@ fn doctor_cmd(cfg: &Config, config_path: Option<PathBuf>) -> Result<()> {
         cfg.providers.claude.enabled,
         &claude_snapshot,
     ));
+
+    let mut opencode = OpenCodeCollector::from_config(&cfg.providers.opencode);
+    let (snapshot, mut details) = opencode.scan_for_doctor(&ctx);
+    if cfg.providers.opencode.enabled && opencode.skips_claude_agent() {
+        if !cfg.providers.claude.enabled {
+            details.hints.push(
+                "Claude collector disabled; claude-agent is still skipped. Set skip_upstreams = [] to count it here.",
+            );
+        } else if claude_snapshot.sessions.is_empty()
+            && details
+                .usage
+                .as_ref()
+                .is_some_and(|u| u.skipped.contains_key("claude-agent"))
+        {
+            details.hints.push("OpenCode skipped claude-agent messages, but no Claude Code sessions were found in the same 48 h.");
+        }
+    }
+    let mut open_doctor = crate::diagnostics::ProviderDoctor::from_snapshot(
+        crate::diagnostics::DiscoveryInfo {
+            provider: Provider::OpenCode,
+            installed: details.found,
+            session_dirs: vec![],
+            session_files: u64::from(details.found),
+            auth_present: false,
+            cli_version: None,
+        },
+        cfg.providers.opencode.enabled,
+        &snapshot,
+    );
+    open_doctor.opencode = Some(details);
+    providers.push(open_doctor);
 
     // The custom provider only appears in doctor when actually configured.
     if cfg.providers.custom.source.is_some() || cfg.providers.custom.command.is_some() {
@@ -524,7 +560,8 @@ fn tui_cmd(cfg: Config, provider_filter: Option<Provider>) -> Result<()> {
     app.view = match provider_filter {
         Some(Provider::Codex) => View::Codex,
         Some(Provider::Claude) => View::Claude,
-        Some(Provider::OpenCode | Provider::Custom) | None => View::Combined,
+        Some(Provider::OpenCode) => View::OpenCode,
+        Some(Provider::Custom) | None => View::Combined,
     };
     app.reduced_motion = cfg.ui.reduced_motion;
     app.enabled_providers = Provider::ALL
@@ -576,5 +613,44 @@ async fn collector_loop(
             _ = tokio::time::sleep(refresh) => {}
             _ = control.refresh_now.notified() => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{CollectorHealth, ProviderSnapshot, TokenCounts, WeekAggregate};
+
+    #[test]
+    fn opencode_status_line_uses_week_tokens_and_omits_unavailable_data() {
+        let now = Utc::now();
+        let mut snapshot = UsageSnapshot::new(now);
+        for provider in [Provider::Claude, Provider::OpenCode] {
+            snapshot.providers.insert(
+                provider,
+                ProviderSnapshot::empty(provider, CollectorHealth::unavailable("not found")),
+            );
+        }
+        assert_eq!(render_line(&snapshot, false, now), "Claude n/a");
+        snapshot
+            .providers
+            .get_mut(&Provider::OpenCode)
+            .unwrap()
+            .week = Some(WeekAggregate {
+            week_start: now,
+            week_end: now + chrono::Duration::weeks(1),
+            tokens: TokenCounts {
+                input: 1200,
+                output: 34,
+                ..Default::default()
+            },
+            by_model: Default::default(),
+            sessions: 1,
+        });
+        assert_eq!(
+            render_line(&snapshot, false, now),
+            "Claude n/a · OpenCode wk 1.2k tok"
+        );
+        assert!(render_line(&snapshot, true, now).contains("\x1b[38;5;141mOpenCode"));
     }
 }

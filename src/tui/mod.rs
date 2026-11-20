@@ -165,6 +165,7 @@ fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<KeyAction> {
         KeyCode::Char('2') => Some(KeyAction::View(View::Claude)),
         KeyCode::Char('3') => Some(KeyAction::View(View::Combined)),
         KeyCode::Char('4') => Some(KeyAction::View(View::Planner)),
+        KeyCode::Char('5') => Some(KeyAction::View(View::OpenCode)),
         KeyCode::Char('s') => Some(KeyAction::Focus(Panel::Sessions)),
         KeyCode::Char('m') => Some(KeyAction::Focus(Panel::Breakdown)),
         KeyCode::Char('w') => Some(KeyAction::Focus(Panel::Weekly)),
@@ -193,7 +194,7 @@ fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<KeyAction> {
 fn panel_rects(app: &App, area: Rect) -> Vec<(Panel, Rect)> {
     match app.view {
         View::Combined => {
-            let l = layout::combined(area, app.enabled_providers.len().max(1));
+            let l = layout::combined(area, app.view_providers().len().max(1));
             let mut rects: Vec<(Panel, Rect)> =
                 l.providers.iter().map(|r| (Panel::Providers, *r)).collect();
             rects.extend([
@@ -204,7 +205,7 @@ fn panel_rects(app: &App, area: Rect) -> Vec<(Panel, Rect)> {
             ]);
             rects
         }
-        View::Codex | View::Claude => {
+        View::Codex | View::Claude | View::OpenCode => {
             let l = layout::provider(area);
             vec![
                 (Panel::Providers, l.panel),
@@ -294,6 +295,7 @@ fn draw(frame: &mut Frame, app: &App, theme: &Theme) {
         View::Combined => draw_combined(frame, app, theme, now),
         View::Codex => draw_provider(frame, app, theme, now, Provider::Codex),
         View::Claude => draw_provider(frame, app, theme, now, Provider::Claude),
+        View::OpenCode => draw_provider(frame, app, theme, now, Provider::OpenCode),
         View::Planner => draw_planner(frame, app, theme, now),
     }
     if let Some(session) = app.detail_session() {
@@ -305,9 +307,10 @@ fn draw(frame: &mut Frame, app: &App, theme: &Theme) {
 }
 
 fn draw_combined(frame: &mut Frame, app: &App, theme: &Theme, now: chrono::DateTime<Utc>) {
-    let l = layout::combined(frame.area(), app.enabled_providers.len().max(1));
+    let visible = app.view_providers();
+    let l = layout::combined(frame.area(), visible.len().max(1));
     widgets::render_header(frame, l.header, app, theme, now);
-    for (i, provider) in app.enabled_providers.iter().enumerate() {
+    for (i, provider) in visible.iter().enumerate() {
         let Some(rect) = l.providers.get(i) else {
             break;
         };
@@ -323,11 +326,8 @@ fn draw_combined(frame: &mut Frame, app: &App, theme: &Theme, now: chrono::DateT
             false,
         );
     }
-    let providers: Vec<(Provider, Option<&crate::domain::ProviderSnapshot>)> = app
-        .enabled_providers
-        .iter()
-        .map(|p| (*p, app.provider(*p)))
-        .collect();
+    let providers: Vec<(Provider, Option<&crate::domain::ProviderSnapshot>)> =
+        visible.iter().map(|p| (*p, app.provider(*p))).collect();
     widgets::render_chart(
         frame,
         l.rate_chart,
@@ -425,9 +425,10 @@ fn draw_provider(
 }
 
 fn draw_planner(frame: &mut Frame, app: &App, theme: &Theme, now: chrono::DateTime<Utc>) {
-    let l = layout::planner(frame.area(), app.enabled_providers.len().max(1));
+    let visible = app.view_providers();
+    let l = layout::planner(frame.area(), visible.len().max(1));
     widgets::render_header(frame, l.header, app, theme, now);
-    for (i, provider) in app.enabled_providers.iter().enumerate() {
+    for (i, provider) in visible.iter().enumerate() {
         let Some(rect) = l.providers.get(i) else {
             break;
         };

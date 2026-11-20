@@ -66,6 +66,8 @@ pub struct Palette {
     pub codex_dim: Rgb,
     pub claude: Rgb,
     pub claude_dim: Rgb,
+    pub opencode: Rgb,
+    pub opencode_dim: Rgb,
     pub custom: Rgb,
     pub custom_dim: Rgb,
     pub fable: Rgb,
@@ -99,6 +101,8 @@ fn dark() -> Palette {
         codex_dim: Rgb(56, 108, 151),
         claude: Rgb(255, 166, 87),
         claude_dim: Rgb(148, 94, 47),
+        opencode: Rgb(178, 147, 255),
+        opencode_dim: Rgb(105, 83, 155),
         custom: Rgb(126, 222, 190),
         custom_dim: Rgb(62, 118, 100),
         fable: Rgb(214, 143, 255),
@@ -125,6 +129,8 @@ fn light() -> Palette {
         codex_dim: Rgb(120, 165, 205),
         claude: Rgb(188, 92, 8),
         claude_dim: Rgb(214, 164, 124),
+        opencode: Rgb(101, 55, 183),
+        opencode_dim: Rgb(157, 126, 210),
         custom: Rgb(16, 128, 96),
         custom_dim: Rgb(120, 180, 160),
         fable: Rgb(130, 60, 190),
@@ -519,9 +525,8 @@ impl Theme {
         match provider {
             Provider::Codex => self.color(self.palette().codex, Color::Cyan),
             Provider::Claude => self.color(self.palette().claude, Color::Yellow),
-            Provider::OpenCode | Provider::Custom => {
-                self.color(self.palette().custom, Color::Magenta)
-            }
+            Provider::OpenCode => self.color(self.palette().opencode, Color::Magenta),
+            Provider::Custom => self.color(self.palette().custom, Color::Green),
         }
     }
 
@@ -529,9 +534,8 @@ impl Theme {
         match provider {
             Provider::Codex => self.color(self.palette().codex_dim, Color::Blue),
             Provider::Claude => self.color(self.palette().claude_dim, Color::DarkGray),
-            Provider::OpenCode | Provider::Custom => {
-                self.color(self.palette().custom_dim, Color::DarkGray)
-            }
+            Provider::OpenCode => self.color(self.palette().opencode_dim, Color::DarkGray),
+            Provider::Custom => self.color(self.palette().custom_dim, Color::DarkGray),
         }
     }
 

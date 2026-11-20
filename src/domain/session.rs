@@ -24,6 +24,9 @@ pub struct SessionUsage {
     /// Reasoning effort reported for the latest turn, when available.
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// Upstream backend of the latest counted turn, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<String>,
     /// Project directory name (basename of the session cwd), for display.
     pub project: Option<String>,
     pub started_at: Option<DateTime<Utc>>,

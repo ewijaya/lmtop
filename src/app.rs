@@ -14,6 +14,7 @@ pub enum View {
     Claude,
     /// Capacity planning: race bars, burn scenarios, week pacing.
     Planner,
+    OpenCode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,7 +125,7 @@ impl App {
             refresh_secs,
             stale_after_secs: (refresh_secs as i64 * 3).max(30),
             should_quit: false,
-            enabled_providers: vec![Provider::Codex, Provider::Claude],
+            enabled_providers: vec![Provider::Codex, Provider::Claude, Provider::OpenCode],
             history: None,
             alerts: Vec::new(),
             chart_mode: ChartMode::Rate,
@@ -176,9 +177,18 @@ impl App {
     /// Providers relevant to the current view, in display order.
     pub fn view_providers(&self) -> Vec<Provider> {
         match self.view {
-            View::Combined | View::Planner => self.enabled_providers.clone(),
+            View::Combined | View::Planner => self
+                .enabled_providers
+                .iter()
+                .copied()
+                .filter(|&provider| {
+                    provider != Provider::OpenCode
+                        || self.provider(provider).is_some_and(|p| p.week.is_some())
+                })
+                .collect(),
             View::Codex => vec![Provider::Codex],
             View::Claude => vec![Provider::Claude],
+            View::OpenCode => vec![Provider::OpenCode],
         }
     }
 
@@ -442,6 +452,7 @@ mod tests {
                 id: id.into(),
                 model: None,
                 reasoning_effort: None,
+                upstream: None,
                 project: Some(project.into()),
                 started_at: None,
                 last_activity: Some(now - chrono::Duration::minutes(age_min)),

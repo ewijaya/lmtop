@@ -75,6 +75,7 @@ fn skips_claude_agent_per_message_unless_list_is_empty() {
     assert_eq!(snap.sessions.len(), 1);
     assert_eq!(snap.sessions[0].id, "mixed");
     assert_eq!(snap.sessions[0].model.as_ref().unwrap().raw, "gpt-6.2-sol");
+    assert_eq!(snap.sessions[0].upstream.as_deref(), Some("openai"));
 
     let snap = OpenCodeCollector::from_config(&OpenCodeConfig {
         db_path: Some(fixture.path.clone()),
@@ -235,6 +236,68 @@ fn models_split_and_latest_completion_wins_even_if_older_message_was_updated_las
     assert_eq!(session.tokens_by_model["gpt-6.2-sol"].total(), 7);
     assert_eq!(session.tokens_by_model["gemini-9"].total(), 11);
     assert_eq!(session.model.as_ref().unwrap().raw, "gemini-9");
+    assert_eq!(session.upstream.as_deref(), Some("openrouter"));
+    let mut json = serde_json::to_value(session).unwrap();
+    assert_eq!(json["upstream"], "openrouter");
+    json.as_object_mut().unwrap().remove("upstream");
+    let old: crate::domain::SessionUsage = serde_json::from_value(json).unwrap();
+    assert_eq!(old.upstream, None);
+}
+
+#[test]
+fn doctor_reports_discovery_and_48h_message_counts_by_upstream() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    fixture.session("old", None, -3 * 24 * 60, -3 * 24 * 60);
+    fixture.message(
+        "older",
+        "old",
+        -3 * 24 * 60,
+        -3 * 24 * 60,
+        usage("gpt-6.2-sol", "openai", -3 * 24 * 60, 90, 10),
+    );
+    fixture.message(
+        "counted",
+        "a",
+        -9,
+        -8,
+        usage("gpt-6.2-sol", "openai", -8, 10, 20),
+    );
+    fixture.message(
+        "skipped",
+        "a",
+        -5,
+        -4,
+        usage("claude-opus-4-8", "claude-agent", -4, 100, 200),
+    );
+    let mut failed = usage("gpt-6.2-sol", "openai", -3, 0, 0);
+    failed["finish"] = json!("error");
+    fixture.message("failed", "a", -4, -3, failed);
+    let (snapshot, details) = collector(&fixture.path).scan_for_doctor(&ctx());
+    assert_eq!(snapshot.week.unwrap().tokens.total(), 130);
+    assert!(details.found && details.readable);
+    assert_eq!(details.version.as_deref(), Some("2.3.2"));
+    assert_eq!(
+        details.migration.as_deref(),
+        Some("20261116213417_automation_active_index")
+    );
+    let usage = details.usage.unwrap();
+    assert_eq!(usage.sessions, 1);
+    assert_eq!(
+        (
+            usage.counted["openai"].messages,
+            usage.counted["openai"].tokens
+        ),
+        (1, 30)
+    );
+    assert_eq!(
+        (
+            usage.skipped["claude-agent"].messages,
+            usage.skipped["claude-agent"].tokens
+        ),
+        (1, 300)
+    );
+    assert_eq!(usage.failed_messages, 1);
 }
 
 #[test]
