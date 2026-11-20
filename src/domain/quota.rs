@@ -1,6 +1,39 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// A pointer to another panel's quota reporting, not a quota measurement
+/// or an attribution of individual turns to a subscription.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SharedPlan {
+    ChatGpt,
+    Claude,
+}
+
+impl SharedPlan {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::ChatGpt => "ChatGPT",
+            Self::Claude => "Claude",
+        }
+    }
+
+    pub fn panel(self) -> super::Provider {
+        match self {
+            Self::ChatGpt => super::Provider::Codex,
+            Self::Claude => super::Provider::Claude,
+        }
+    }
+
+    pub fn pointer(self) -> String {
+        format!(
+            "shared {} plan, see {} panel (--live for freshness)",
+            self.name(),
+            self.panel()
+        )
+    }
+}
+
 /// Stable classification of a provider-defined rolling quota window.
 ///
 /// Classification is done by window duration, never by array position:

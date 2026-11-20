@@ -1,6 +1,6 @@
 //! The `doctor` subcommand and privacy-safe diagnostics.
 
-use crate::domain::{Capability, Provider, ProviderSnapshot};
+use crate::domain::{Capability, Provider, ProviderSnapshot, SharedPlan};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -58,6 +58,7 @@ pub(crate) struct OpenCodeDoctor {
     pub version: Option<String>,
     pub migration: Option<String>,
     pub usage: Option<OpenCodeUsageDoctor>,
+    pub shared_plans: Vec<SharedPlan>,
     pub hints: Vec<&'static str>,
 }
 
@@ -68,6 +69,9 @@ pub(crate) struct OpenCodeUsageDoctor {
     pub counted: BTreeMap<String, MessageTally>,
     pub skipped: BTreeMap<String, MessageTally>,
     pub failed_messages: usize,
+    pub auxiliary_counted: u128,
+    pub auxiliary_skipped: u128,
+    pub auxiliary_unknown: u128,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -119,8 +123,25 @@ impl OpenCodeDoctor {
                 out.push_str(&format!("  messages {label}: {total}{details}\n"));
             }
             out.push_str(&format!("  failed messages:  {}\n", usage.failed_messages));
+            out.push_str(&format!(
+                "  auxiliary tokens: counted {} · not counted {} (skipped upstream: {}, unknown upstream: {})\n",
+                usage.auxiliary_counted,
+                usage.auxiliary_skipped + usage.auxiliary_unknown,
+                usage.auxiliary_skipped,
+                usage.auxiliary_unknown,
+            ));
         }
-        out.push_str("  quota:            none\n");
+        out.push_str("  quota:            none");
+        if !self.shared_plans.is_empty() {
+            let pointers = self
+                .shared_plans
+                .iter()
+                .map(|p| format!("see {} panel for {} plan", p.panel(), p.name()))
+                .collect::<Vec<_>>()
+                .join("; ");
+            out.push_str(&format!(" ({pointers})"));
+        }
+        out.push('\n');
         for hint in &self.hints {
             out.push_str(&format!("  hint:             {hint}\n"));
         }

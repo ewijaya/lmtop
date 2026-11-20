@@ -453,6 +453,7 @@ mod tests {
                 model: None,
                 reasoning_effort: None,
                 upstream: None,
+                auxiliary_not_attributed: None,
                 project: Some(project.into()),
                 started_at: None,
                 last_activity: Some(now - chrono::Duration::minutes(age_min)),

@@ -27,6 +27,9 @@ pub struct SessionUsage {
     /// Upstream backend of the latest counted turn, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,
+    /// Positive reconciliation residual withheld from all observed totals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auxiliary_not_attributed: Option<UnattributedAuxiliary>,
     /// Project directory name (basename of the session cwd), for display.
     pub project: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
@@ -42,6 +45,12 @@ pub struct SessionUsage {
     pub context_window: Option<u64>,
     /// Observed tokens per minute over the recent activity window.
     pub tokens_per_minute: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UnattributedAuxiliary {
+    pub tokens: u64,
+    pub may_be_counted_under_claude: bool,
 }
 
 impl SessionUsage {

@@ -218,7 +218,12 @@ fn render_snapshot_text(snapshot: &UsageSnapshot) -> String {
             out.push_str(&format!("  note:         {msg}\n"));
         }
         if snap.quota_windows.is_empty() {
-            out.push_str("  quota:        unavailable\n");
+            if snap.shared_plans.is_empty() {
+                out.push_str("  quota:        unavailable\n");
+            }
+            for plan in &snap.shared_plans {
+                out.push_str(&format!("  quota:        {}\n", plan.pointer()));
+            }
         }
         for w in &snap.quota_windows {
             // The window rolled over since this snapshot was captured; its

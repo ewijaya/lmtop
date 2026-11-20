@@ -125,6 +125,39 @@ pub fn render_provider_panel(
         );
         return;
     }
+    if provider == Provider::OpenCode
+        && !detailed
+        && inner.width < 50
+        && let Some(week) = &snap.week
+    {
+        // Leave room for observed usage in the small combined cards.
+        let quota = if snap.shared_plans.is_empty() {
+            "Quota unavailable".into()
+        } else {
+            let panels = snap
+                .shared_plans
+                .iter()
+                .map(|p| p.panel().display_name())
+                .collect::<Vec<_>>()
+                .join(" / ");
+            format!("Quota: see {panels}")
+        };
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled(quota, theme.dim())),
+                Line::from(Span::styled(
+                    format!("Week {} tokens", fmt_tokens(week.tokens.total())),
+                    Style::default().fg(theme.provider(provider)),
+                )),
+                Line::from(Span::styled(
+                    format!("{} recent sessions", snap.sessions.len()),
+                    theme.dim(),
+                )),
+            ]),
+            inner,
+        );
+        return;
+    }
 
     let mut lines: Vec<Line> = Vec::new();
     let bar_width = (inner.width as usize).saturating_sub(44).clamp(6, 20);
@@ -209,6 +242,20 @@ pub fn render_provider_panel(
                 }
             }
             lines.push(Line::from(spans));
+        }
+    } else if provider == Provider::OpenCode {
+        if snap.shared_plans.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("Quota: ", theme.text()),
+                Span::styled("unavailable (no plan quota for this backend)", theme.dim()),
+            ]));
+        } else {
+            lines.extend(snap.shared_plans.iter().map(|plan| {
+                Line::from(vec![
+                    Span::styled("Quota: ", theme.text()),
+                    Span::styled(plan.pointer(), theme.dim()),
+                ])
+            }));
         }
     } else {
         let reason = if snap.supports(Capability::ProviderQuota) {

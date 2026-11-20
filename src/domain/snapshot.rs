@@ -1,4 +1,4 @@
-use super::{Credits, ModelIdentity, Provider, QuotaWindow, SessionUsage, TokenCounts};
+use super::{Credits, ModelIdentity, Provider, QuotaWindow, SessionUsage, SharedPlan, TokenCounts};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -165,6 +165,9 @@ pub struct ProviderSnapshot {
     pub week: Option<WeekAggregate>,
     /// Provider-reported quota windows, if the provider exposes them.
     pub quota_windows: Vec<QuotaWindow>,
+    /// Panels that may report plan quota for this provider's upstreams.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_plans: Vec<SharedPlan>,
     /// Provider-reported credits, if exposed.
     pub credits: Option<Credits>,
     /// Per-minute throughput samples for the recent history window.
@@ -183,6 +186,7 @@ impl ProviderSnapshot {
             sessions: Vec::new(),
             week: None,
             quota_windows: Vec::new(),
+            shared_plans: Vec::new(),
             credits: None,
             history: Vec::new(),
             current_session_tokens: TokenCounts::default(),

@@ -7,11 +7,11 @@ use crate::config::OpenCodeConfig;
 use crate::diagnostics::{OpenCodeDoctor, OpenCodeUsageDoctor, redacted_dirs};
 use crate::domain::{
     Capability, CollectorHealth, CollectorStatus, ModelIdentity, Provider, ProviderSnapshot,
-    TokenCounts,
+    SharedPlan, TokenCounts,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, Row};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::slice;
 use std::time::Duration;
@@ -51,6 +51,10 @@ const MESSAGES: &str = concat!(
 const SESSION: &str = "SELECT parent_id, directory, time_created, time_updated \
                        FROM session_v2 WHERE id = ?1";
 
+const CREDENTIAL_PLANS: &str = "SELECT integration_id, json_extract(value, '$.type'), json_extract(value, '$.methodID') \
+     FROM credential WHERE (integration_id = 'openai' AND ?1) \
+        OR (integration_id = 'anthropic' AND ?2)";
+
 // Session counters are lifetime counters. Subtract lifetime message usage,
 // not the retention-limited scan, and check *all* assistant upstreams,
 // including incomplete messages. No positive inference from an unknown
@@ -69,12 +73,13 @@ const RESIDUALS: &str = concat!(
                sum(output) FILTER (WHERE completed IS NOT NULL) AS output,
                sum(reasoning) FILTER (WHERE completed IS NOT NULL) AS reasoning,
                sum(cache_read) FILTER (WHERE completed IS NOT NULL) AS cache_read,
-               sum(cache_write) FILTER (WHERE completed IS NOT NULL) AS cache_write
+               sum(cache_write) FILTER (WHERE completed IS NOT NULL) AS cache_write,
+               count(*) FILTER (WHERE upstream IN (SELECT value FROM json_each(?2))) > 0 AS skipped,
+               count(*) FILTER (WHERE upstream = 'claude-agent') > 0 AS has_claude_agent,
+               count(*) FILTER (WHERE upstream IS NULL OR upstream = '') > 0 AS unknown
         FROM messages
         GROUP BY session_id
-        HAVING count(*) FILTER (WHERE upstream IS NULL OR upstream = ''
-                    OR upstream IN (SELECT value FROM json_each(?2))) = 0
-           AND count(*) FILTER (WHERE completed IS NOT NULL AND coalesce(
+        HAVING count(*) FILTER (WHERE completed IS NOT NULL AND coalesce(
                      input, output, reasoning, cache_read, cache_write) IS NOT NULL) > 0
     )
     SELECT s.id, s.time_updated,
@@ -82,7 +87,8 @@ const RESIDUALS: &str = concat!(
            max(0, s.tokens_output - coalesce(t.output, 0)),
            max(0, s.tokens_reasoning - coalesce(t.reasoning, 0)),
            max(0, s.tokens_cache_read - coalesce(t.cache_read, 0)),
-           max(0, s.tokens_cache_write - coalesce(t.cache_write, 0))
+           max(0, s.tokens_cache_write - coalesce(t.cache_write, 0)),
+           t.skipped, t.has_claude_agent, t.unknown
     FROM totals t JOIN session_v2 s ON s.id = t.session_id
     ORDER BY s.id"#,
 );
@@ -144,6 +150,14 @@ struct Residual {
     session_id: String,
     at: DateTime<Utc>,
     tokens: TokenCounts,
+    attribution: ResidualAttribution,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResidualAttribution {
+    Counted,
+    Skipped { may_be_claude: bool },
+    Unknown,
 }
 
 struct SessionRow {
@@ -174,6 +188,9 @@ pub struct OpenCodeCollector {
     residuals: Vec<Residual>,
     store: UsageStore,
     failed_messages: usize,
+    observed_plans: BTreeSet<SharedPlan>,
+    shared_plans: Vec<SharedPlan>,
+    plan_metadata_error: bool,
 }
 
 impl OpenCodeCollector {
@@ -187,6 +204,9 @@ impl OpenCodeCollector {
             residuals: Vec::new(),
             store: UsageStore::new(Provider::OpenCode),
             failed_messages: 0,
+            observed_plans: BTreeSet::new(),
+            shared_plans: Vec::new(),
+            plan_metadata_error: false,
         }
     }
 
@@ -225,32 +245,53 @@ impl OpenCodeCollector {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let high_water = messages.iter().map(|m| m.updated).max();
         let skip = serde_json::json!(self.skip_upstreams).to_string();
+        let skip_claude = self.skips_claude_agent();
         let mut stmt = db.prepare(RESIDUALS)?;
         let residuals = stmt
             .query_map(rusqlite::params![cutoff.timestamp_millis(), skip], |row| {
+                let attribution = if row.get(7)? {
+                    ResidualAttribution::Skipped {
+                        may_be_claude: skip_claude && row.get(8)?,
+                    }
+                } else if row.get(9)? {
+                    ResidualAttribution::Unknown
+                } else {
+                    ResidualAttribution::Counted
+                };
                 Ok(Residual {
                     session_id: row.get(0)?,
                     at: date(row, 1)?,
                     tokens: read_tokens(row, 2)?.ok_or(rusqlite::Error::InvalidQuery)?,
+                    attribution,
                 })
             })?
             .filter(|r| !r.as_ref().is_ok_and(|r| r.tokens == TokenCounts::default()))
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
         if let Some(details) = doctor {
-            self.populate_doctor(&db, ctx.now, &messages, details)?;
+            self.populate_doctor(&db, ctx.now, &messages, &residuals, details)?;
         }
         // Rebuild only on changes or when entries age out. Replacing the
         // derived store lets provisional residuals shrink as messages arrive.
-        if self.high_water.is_some()
+        let unchanged = self.high_water.is_some()
             && high_water == self.high_water
             && self.residuals == residuals
-            && !self.ledger.values().any(|entry| entry.created < cutoff)
-        {
-            return Ok(());
+            && !self.ledger.values().any(|entry| entry.created < cutoff);
+        if !unchanged {
+            self.rebuild(&db, ctx, messages, residuals)?;
+            self.high_water = high_water;
         }
-        self.rebuild(&db, ctx, messages, residuals)?;
-        self.high_water = high_water;
+        // Auth metadata can change independently of messages or counters.
+        match read_shared_plans(&db, &self.observed_plans) {
+            Ok(plans) => {
+                self.shared_plans = plans;
+                self.plan_metadata_error = false;
+            }
+            Err(_) => {
+                self.shared_plans.clear();
+                self.plan_metadata_error = true;
+            }
+        }
         Ok(())
     }
 
@@ -266,8 +307,12 @@ impl OpenCodeCollector {
         let mut sessions = Sessions::default();
         let mut ledger = HashMap::new();
         let mut failed_messages = 0;
+        let mut observed_plans = BTreeSet::new();
 
-        for residual in &residuals {
+        for residual in residuals
+            .iter()
+            .filter(|r| r.attribution == ResidualAttribution::Counted)
+        {
             let root = sessions.root(db, &residual.session_id)?;
             check_sum(&mut total, &residual.tokens)?;
             store.record_event(&root, residual.at, None, residual.tokens.clone());
@@ -293,6 +338,15 @@ impl OpenCodeCollector {
                 .ok_or(ReadError::InvalidUsage)?;
             if self.skip_upstreams.contains(&upstream) {
                 continue;
+            }
+            match upstream.as_str() {
+                "openai" => {
+                    observed_plans.insert(SharedPlan::ChatGpt);
+                }
+                "anthropic" => {
+                    observed_plans.insert(SharedPlan::Claude);
+                }
+                _ => {}
             }
             let model = m
                 .model
@@ -334,11 +388,31 @@ impl OpenCodeCollector {
             );
         }
 
+        for residual in residuals
+            .iter()
+            .filter(|r| r.attribution != ResidualAttribution::Counted)
+        {
+            let root = sessions.root(db, &residual.session_id)?;
+            // An excluded-only session must not become a visible session.
+            let Some(record) = store.existing_session_mut(&root) else {
+                continue;
+            };
+            let withheld = record.auxiliary_not_attributed.get_or_insert_default();
+            withheld.tokens =
+                u64::try_from(u128::from(withheld.tokens) + wide_total(&residual.tokens))
+                    .map_err(|_| ReadError::InvalidUsage)?;
+            withheld.may_be_counted_under_claude |= residual.attribution
+                == ResidualAttribution::Skipped {
+                    may_be_claude: true,
+                };
+        }
+
         store.trim(ctx);
         self.store = store;
         self.ledger = ledger;
         self.residuals = residuals;
         self.failed_messages = failed_messages;
+        self.observed_plans = observed_plans;
         Ok(())
     }
 
@@ -347,6 +421,7 @@ impl OpenCodeCollector {
         db: &Connection,
         now: DateTime<Utc>,
         messages: &[Message],
+        residuals: &[Residual],
         doctor: &mut OpenCodeDoctor,
     ) -> rusqlite::Result<()> {
         let cutoff = now - chrono::Duration::hours(SESSION_LOOKBACK_HOURS);
@@ -385,15 +460,15 @@ impl OpenCodeCollector {
                 .entry(display_identifier(upstream).unwrap_or_else(|| "unavailable".into()))
                 .or_default();
             entry.messages += 1;
-            entry.tokens += [
-                tokens.input,
-                tokens.cached_input,
-                tokens.cache_creation,
-                tokens.output,
-            ]
-            .into_iter()
-            .map(u128::from)
-            .sum::<u128>();
+            entry.tokens += wide_total(tokens);
+        }
+        for residual in residuals.iter().filter(|r| r.at >= cutoff) {
+            let total = wide_total(&residual.tokens);
+            match residual.attribution {
+                ResidualAttribution::Counted => usage.auxiliary_counted += total,
+                ResidualAttribution::Skipped { .. } => usage.auxiliary_skipped += total,
+                ResidualAttribution::Unknown => usage.auxiliary_unknown += total,
+            }
         }
         doctor.usage = Some(usage);
         Ok(())
@@ -416,6 +491,7 @@ impl OpenCodeCollector {
             ..Default::default()
         };
         let snapshot = self.scan_impl(ctx, Some(&mut details));
+        details.shared_plans.clone_from(&snapshot.shared_plans);
         if snapshot.week.is_none() {
             details.usage = None;
         }
@@ -442,23 +518,78 @@ impl OpenCodeCollector {
             }
         };
         match result {
-            Ok(()) => self.store.build_snapshot(
-                ctx,
-                CAPABILITIES.to_vec(),
-                CollectorHealth {
-                    status: CollectorStatus::Ok,
-                    message: (self.failed_messages > 0)
-                        .then(|| format!("{} failed messages without usage", self.failed_messages)),
-                    last_scan: Some(ctx.now),
-                    files_scanned: 1,
-                    parse_errors: 0,
-                },
-                vec![],
-                None,
-            ),
+            Ok(()) => {
+                let (status, message, parse_errors) = if self.plan_metadata_error {
+                    (
+                        CollectorStatus::Degraded,
+                        Some("could not read OpenCode quota-plan metadata".into()),
+                        1,
+                    )
+                } else {
+                    let message = match self.failed_messages {
+                        0 => None,
+                        1 => Some("1 failed message without usage".into()),
+                        count => Some(format!("{count} failed messages without usage")),
+                    };
+                    (CollectorStatus::Ok, message, 0)
+                };
+                let mut snapshot = self.store.build_snapshot(
+                    ctx,
+                    CAPABILITIES.to_vec(),
+                    CollectorHealth {
+                        status,
+                        message,
+                        last_scan: Some(ctx.now),
+                        files_scanned: 1,
+                        parse_errors,
+                    },
+                    vec![],
+                    None,
+                );
+                snapshot.shared_plans.clone_from(&self.shared_plans);
+                snapshot
+            }
             Err(health) => ProviderSnapshot::empty(self.provider(), health),
         }
     }
+}
+
+fn read_shared_plans(
+    db: &Connection,
+    observed: &BTreeSet<SharedPlan>,
+) -> rusqlite::Result<Vec<SharedPlan>> {
+    if observed.is_empty() || !db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'credential')",
+        [], |row| row.get::<_, bool>(0),
+    )? {
+        return Ok(vec![]);
+    }
+    let mut stmt = db.prepare(CREDENTIAL_PLANS)?;
+    let mut rows = stmt.query([
+        observed.contains(&SharedPlan::ChatGpt),
+        observed.contains(&SharedPlan::Claude),
+    ])?;
+    let mut plans = BTreeSet::new();
+    while let Some(row) = rows.next()? {
+        let upstream: String = row.get(0)?;
+        let candidate = match upstream.as_str() {
+            "openai" => SharedPlan::ChatGpt,
+            "anthropic" => SharedPlan::Claude,
+            _ => continue,
+        };
+        if row.get::<_, Option<String>>(1)?.as_deref() != Some("oauth") {
+            continue;
+        }
+        if candidate == SharedPlan::ChatGpt
+            && !row
+                .get::<_, Option<String>>(2)?
+                .is_some_and(|id| id == "chatgpt" || id.starts_with("chatgpt-"))
+        {
+            continue;
+        }
+        plans.insert(candidate);
+    }
+    Ok(plans.into_iter().collect())
 }
 
 impl Collector for OpenCodeCollector {
@@ -616,16 +747,24 @@ fn read_tokens(row: &Row<'_>, start: usize) -> rusqlite::Result<Option<TokenCoun
 /// Validate the sum before passing SQLite counters to the shared aggregation,
 /// which assumes its inputs fit in u64. A corrupt DB must not wrap or panic.
 fn check_sum(total: &mut TokenCounts, tokens: &TokenCounts) -> Result<(), ReadError> {
-    let sum = u128::from(total.total())
-        + u128::from(tokens.input)
-        + u128::from(tokens.cached_input)
-        + u128::from(tokens.cache_creation)
-        + u128::from(tokens.output);
+    let sum = u128::from(total.total()) + wide_total(tokens);
     if sum > u128::from(u64::MAX) || total.reasoning.checked_add(tokens.reasoning).is_none() {
         return Err(ReadError::InvalidUsage);
     }
     total.add(tokens);
     Ok(())
+}
+
+fn wide_total(tokens: &TokenCounts) -> u128 {
+    [
+        tokens.input,
+        tokens.cached_input,
+        tokens.cache_creation,
+        tokens.output,
+    ]
+    .into_iter()
+    .map(u128::from)
+    .sum()
 }
 
 #[derive(Default)]

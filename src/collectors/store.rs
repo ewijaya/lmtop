@@ -6,7 +6,7 @@ use super::ScanContext;
 use crate::aggregation::{self, UsageEvent};
 use crate::domain::{
     Capability, CollectorHealth, Credits, ModelIdentity, Provider, ProviderSnapshot, QuotaWindow,
-    SessionState, SessionUsage, TokenCounts,
+    SessionState, SessionUsage, TokenCounts, UnattributedAuxiliary,
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeMap;
@@ -25,6 +25,7 @@ pub struct SessionRecord {
     pub last_model: Option<ModelIdentity>,
     pub reasoning_effort: Option<String>,
     pub upstream: Option<String>,
+    pub auxiliary_not_attributed: Option<UnattributedAuxiliary>,
     pub context_tokens: Option<u64>,
     pub context_window: Option<u64>,
     pub tokens: TokenCounts,
@@ -49,6 +50,10 @@ impl UsageStore {
 
     pub fn session_mut(&mut self, id: &str) -> &mut SessionRecord {
         self.sessions.entry(id.to_string()).or_default()
+    }
+
+    pub fn existing_session_mut(&mut self, id: &str) -> Option<&mut SessionRecord> {
+        self.sessions.get_mut(id)
     }
 
     /// Record one deduplicated usage delta. Updates both the event stream
@@ -118,6 +123,7 @@ impl UsageStore {
                 model: r.last_model.clone(),
                 reasoning_effort: r.reasoning_effort.clone(),
                 upstream: r.upstream.clone(),
+                auxiliary_not_attributed: r.auxiliary_not_attributed.clone(),
                 project: r.project.clone(),
                 started_at: r.started_at,
                 last_activity: r.last_activity,
@@ -162,6 +168,7 @@ impl UsageStore {
             sessions,
             week: Some(week),
             quota_windows,
+            shared_plans: Vec::new(),
             credits,
             history,
             current_session_tokens,

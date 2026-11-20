@@ -157,7 +157,7 @@ fn counts_errors_only_with_usage() {
     assert_eq!(snap.week.unwrap().tokens.total(), 9);
     assert_eq!(
         snap.health.message.as_deref(),
-        Some("1 failed messages without usage")
+        Some("1 failed message without usage")
     );
 }
 
@@ -327,7 +327,7 @@ fn counts_only_safe_residuals_against_lifetime_messages() {
         usage("claude-opus-4-8", "claude-agent", historical, 10, 1),
     );
     let mut collector = collector(&fixture.path);
-    let snap = collector.scan(&ctx());
+    let (snap, doctor) = collector.scan_for_doctor(&ctx());
     let week = snap.week.unwrap();
     let auxiliary = &week.by_model[OPENCODE_AUXILIARY].tokens;
     assert_eq!(
@@ -338,7 +338,11 @@ fn counts_only_safe_residuals_against_lifetime_messages() {
     assert_eq!(week.tokens.total(), 7 + 7 + 14);
     let mixed = snap.sessions.iter().find(|s| s.id == "mixed").unwrap();
     assert!(!mixed.tokens_by_model.contains_key(OPENCODE_AUXILIARY));
+    let withheld = mixed.auxiliary_not_attributed.as_ref().unwrap();
+    assert_eq!(withheld.tokens, 14);
+    assert!(withheld.may_be_counted_under_claude);
     let safe = snap.sessions.iter().find(|s| s.id == "safe").unwrap();
+    assert!(safe.auxiliary_not_attributed.is_none());
     assert_eq!(safe.tokens_by_model[OPENCODE_AUXILIARY].total(), 14);
     assert_eq!(safe.last_activity, Some(time(-4)));
     assert_eq!(safe.model.as_ref().unwrap().raw, "gpt-6.2-sol");
@@ -350,6 +354,10 @@ fn counts_only_safe_residuals_against_lifetime_messages() {
             .output_tokens,
         5
     );
+    let tallies = doctor.usage.unwrap();
+    assert_eq!(tallies.auxiliary_counted, 14);
+    assert_eq!(tallies.auxiliary_skipped, 14);
+    assert_eq!(tallies.auxiliary_unknown, 0);
     // Session metadata/tallies can change without a new message timestamp.
     fixture
         .conn
@@ -368,6 +376,109 @@ fn counts_only_safe_residuals_against_lifetime_messages() {
     );
     let snap = collector.scan(&ctx());
     assert_eq!(snap.week.unwrap().tokens.total(), 14);
+}
+
+#[test]
+fn unknown_upstream_blocks_residual_without_a_claude_hint() {
+    let fixture = Fixture::new();
+    fixture.session("known", None, -10, -1);
+    fixture.message(
+        "m1",
+        "known",
+        -9,
+        -8,
+        usage("gpt-6.2-sol", "openai", -8, 10, 2),
+    );
+    fixture.message("m2", "known", -2, -1, json!({"finish":null}));
+    fixture
+        .conn
+        .execute("UPDATE session_v2 SET tokens_input=20, tokens_output=2", [])
+        .unwrap();
+    let (snap, doctor) = collector(&fixture.path).scan_for_doctor(&ctx());
+    assert_eq!(snap.week.unwrap().tokens.total(), 12);
+    let withheld = snap.sessions[0].auxiliary_not_attributed.as_ref().unwrap();
+    assert_eq!(withheld.tokens, 10);
+    assert!(!withheld.may_be_counted_under_claude);
+    assert_eq!(doctor.usage.unwrap().auxiliary_unknown, 10);
+}
+
+#[test]
+fn shared_plan_requires_counted_upstream_and_matching_oauth_metadata() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    fixture.message("m1", "a", -9, -8, usage("gpt-6.2-sol", "openai", -8, 10, 2));
+    let mut collector = collector(&fixture.path);
+    assert!(collector.scan(&ctx()).shared_plans.is_empty()); // no credential table
+
+    fixture
+        .conn
+        .execute_batch(
+            "CREATE TABLE credential (integration_id TEXT, value TEXT);
+         INSERT INTO credential VALUES
+           ('openai', '{\"type\":\"api\",\"methodID\":\"chatgpt-token-sharing\"}'),
+           ('anthropic', '{\"type\":\"oauth\",\"access\":\"synthetic-credential-not-read\"}');",
+        )
+        .unwrap();
+    let snap = collector.scan(&ctx());
+    assert!(snap.shared_plans.is_empty()); // API key and no counted Anthropic
+    assert!(snap.quota_windows.is_empty());
+    fixture.conn.execute(
+        "UPDATE credential SET value=?1 WHERE integration_id='openai'",
+        [r#"{"type":"oauth","methodID":"not-chatgpt","access":"synthetic-credential-not-read"}"#],
+    ).unwrap();
+    assert!(collector.scan(&ctx()).shared_plans.is_empty());
+    fixture.conn.execute(
+        "UPDATE credential SET value=?1 WHERE integration_id='openai'",
+        [r#"{"type":"oauth","methodID":"chatgpt-token-sharing","access":"synthetic-credential-not-read"}"#],
+    ).unwrap();
+    let snap = collector.scan(&ctx());
+    assert_eq!(snap.shared_plans, [SharedPlan::ChatGpt]);
+    assert!(snap.quota_windows.is_empty());
+    assert!(!snap.supports(Capability::ProviderQuota));
+    fixture.message(
+        "m2",
+        "a",
+        -3,
+        -2,
+        usage("claude-opus-4-8", "anthropic", -2, 5, 4),
+    );
+    let (snap, doctor) = collector.scan_for_doctor(&ctx());
+    assert_eq!(snap.shared_plans, [SharedPlan::ChatGpt, SharedPlan::Claude]);
+    assert_eq!(snap.shared_plans, doctor.shared_plans);
+    assert_eq!(snap.week.as_ref().unwrap().tokens.total(), 21);
+    let json = serde_json::to_string(&snap).unwrap();
+    assert!(json.contains(r#""shared_plans":["chatgpt","claude"]"#));
+    assert!(!json.contains("synthetic-credential-not-read"));
+    assert!(!json.contains("chatgpt-token-sharing"));
+    let excluded = OpenCodeCollector::from_config(&OpenCodeConfig {
+        db_path: Some(fixture.path.clone()),
+        skip_upstreams: vec!["openai".into()],
+        ..Default::default()
+    })
+    .scan(&ctx());
+    assert_eq!(excluded.shared_plans, [SharedPlan::Claude]);
+}
+
+#[test]
+fn unreadable_auth_metadata_degrades_without_losing_observed_usage() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    fixture.message("m1", "a", -9, -8, usage("gpt-6.2-sol", "openai", -8, 10, 2));
+    fixture
+        .conn
+        .execute_batch(
+            "CREATE TABLE credential (integration_id TEXT, value TEXT);
+         INSERT INTO credential VALUES ('openai', 'invalid-synthetic-value');",
+        )
+        .unwrap();
+    let snap = collector(&fixture.path).scan(&ctx());
+    assert_eq!(snap.health.status, CollectorStatus::Degraded);
+    assert_eq!(snap.week.unwrap().tokens.total(), 12);
+    assert!(snap.shared_plans.is_empty());
+    assert_eq!(
+        snap.health.message.as_deref(),
+        Some("could not read OpenCode quota-plan metadata")
+    );
 }
 
 #[test]
@@ -468,8 +579,8 @@ fn sql_projections_stay_on_the_metadata_allowlist() {
         ] {
             assert!(!sql.contains(forbidden), "{forbidden} in usage SQL");
         }
-        for (i, _) in sql.match_indices("m.data") {
-            assert!(sql[..i].ends_with("json_extract("));
+        for (i, _) in sql.match_indices("data") {
+            assert!(sql[..i].ends_with("json_extract(m."));
             let path = sql[i..].split('\'').nth(1).unwrap();
             assert!(
                 matches!(
@@ -489,4 +600,14 @@ fn sql_projections_stay_on_the_metadata_allowlist() {
             );
         }
     }
+    assert!(CREDENTIAL_PLANS.starts_with("SELECT integration_id,"));
+    assert!(!CREDENTIAL_PLANS.contains("SELECT *"));
+    let auth_paths: Vec<_> = CREDENTIAL_PLANS
+        .match_indices("value")
+        .map(|(i, _)| {
+            assert!(CREDENTIAL_PLANS[..i].ends_with("json_extract("));
+            CREDENTIAL_PLANS[i..].split('\'').nth(1).unwrap()
+        })
+        .collect();
+    assert_eq!(auth_paths, ["$.type", "$.methodID"]);
 }

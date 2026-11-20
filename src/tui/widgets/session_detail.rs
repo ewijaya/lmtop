@@ -25,9 +25,29 @@ pub fn render_session_detail(
         v.sort_by_key(|(_, t)| std::cmp::Reverse(t.total()));
         v
     };
-    let height = (14 + models.len() as u16 + u16::from(session.provider == Provider::OpenCode))
-        .min(area.height);
     let width = 76u16.min(area.width.saturating_sub(2)).max(40);
+    let note = session
+        .auxiliary_not_attributed
+        .as_ref()
+        .map(|aux| {
+            let base = format!("{} auxiliary tokens not attributed", aux.tokens);
+            let suffix = if aux.may_be_counted_under_claude {
+                " (may be counted under Claude)"
+            } else {
+                ""
+            };
+            if base.len() + suffix.len() <= width.saturating_sub(2) as usize {
+                vec![format!("{base}{suffix}")]
+            } else {
+                vec![base, suffix.trim_start().into()]
+            }
+        })
+        .unwrap_or_default();
+    let height = (14
+        + models.len() as u16
+        + u16::from(session.provider == Provider::OpenCode)
+        + note.len() as u16)
+        .min(area.height);
     let rect = centered(area, width, height);
     frame.render_widget(Clear, rect);
 
@@ -220,19 +240,29 @@ pub fn render_session_detail(
             Span::styled(format!("cache hit rate {hit:.0}% of input"), theme.dim()),
         ]));
     }
+    lines.extend(
+        note.into_iter()
+            .map(|line| Line::from(Span::styled(line, theme.dim()))),
+    );
 
     // Per-model split.
     if !models.is_empty() {
         lines.push(Line::default());
         lines.push(Line::from(label("by model")));
         let grand = t.total().max(1);
+        let name_width = if inner.width >= 64 { 25 } else { 16 };
         for (raw, tokens) in models {
             let identity = ModelIdentity::normalize(raw);
             let pct = tokens.total() as f64 / grand as f64 * 100.0;
             let color = theme.model(identity.family);
-            let name: String = identity.display.chars().take(16).collect();
+            let display = if name_width == 16 && identity.display == "auxiliary (model unknown)" {
+                "aux (unknown)"
+            } else {
+                &identity.display
+            };
+            let name: String = display.chars().take(name_width).collect();
             lines.push(Line::from(vec![
-                Span::styled(format!("  {name:<16}"), Style::default().fg(color)),
+                Span::styled(format!("  {name:<name_width$}"), Style::default().fg(color)),
                 Span::styled(bar(bar_width, pct, theme.ascii), Style::default().fg(color)),
                 Span::styled(
                     format!(" {:>6} {pct:>4.0}%", fmt_tokens(tokens.total())),
