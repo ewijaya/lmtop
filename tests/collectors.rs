@@ -2,12 +2,19 @@
 //! a deterministic clock. No real session data is used.
 
 use chrono::{DateTime, Utc};
-use lmtop::collectors::{Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector};
+use lmtop::collectors::{
+    Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector,
+    opencode::OpenCodeCollector,
+};
+use lmtop::config::OpenCodeConfig;
 use lmtop::domain::{
     Capability, CollectorStatus, ModelFamily, Provider, QuotaOutlook, QuotaWindowKind,
     TrendConfidence,
 };
 use std::path::PathBuf;
+
+#[path = "support/opencode.rs"]
+mod opencode_fixture;
 
 /// Deterministic clock: Friday 2026-07-17 12:00 UTC, week (Monday start,
 /// UTC) covering 2026-07-13 .. 2026-07-20.
@@ -504,6 +511,89 @@ fn claude_session_metadata_is_content_free() {
     // Projects appear as basenames, not full paths.
     assert!(!json.contains("/home/user/projects"));
     assert!(json.contains("\"project\":\"gamma\""));
+}
+
+// ------------------------------------------------------------- OpenCode --
+
+#[test]
+fn opencode_aggregates_week_history_and_newest_first_sessions() {
+    use opencode_fixture::{Fixture, usage};
+
+    let fixture = Fixture::new();
+    fixture.session("older", None, -60, -1);
+    fixture.session("newer", None, -20, -2);
+    fixture.message(
+        "m1",
+        "older",
+        -60,
+        -55,
+        usage("gpt-6.2-sol", "openai", -55, 10, 20),
+    );
+    fixture.message(
+        "m2",
+        "newer",
+        -15,
+        -11,
+        usage("gemini-9", "openrouter", -11, 30, 40),
+    );
+    fixture.message(
+        "m3",
+        "newer",
+        -11,
+        -10,
+        usage("gemini-9", "openrouter", -11, 50, 60),
+    );
+    fixture.message(
+        "m4",
+        "newer",
+        -8,
+        -7,
+        usage("claude-opus-4-8", "claude-agent", -7, 70, 80),
+    );
+    let snap = OpenCodeCollector::from_config(&OpenCodeConfig {
+        db_path: Some(fixture.path.clone()),
+        ..Default::default()
+    })
+    .scan(&ctx());
+    assert_eq!(snap.provider, Provider::OpenCode);
+    assert_eq!(snap.health.status, CollectorStatus::Ok);
+    let week = snap.week.as_ref().unwrap();
+    assert_eq!((week.tokens.input, week.tokens.output), (90, 120));
+    assert_eq!(week.sessions, 2);
+    assert_eq!(week.by_model["gpt-6.2-sol"].tokens.total(), 30);
+    assert_eq!(week.by_model["gemini-9"].tokens.total(), 180);
+    let history: Vec<_> = snap
+        .history
+        .iter()
+        .filter(|b| b.input_tokens != 0 || b.output_tokens != 0)
+        .map(|b| (b.at, b.input_tokens, b.output_tokens))
+        .collect();
+    assert_eq!(
+        history,
+        [
+            (opencode_fixture::time(-55), 10, 20),
+            (opencode_fixture::time(-11), 80, 100),
+        ]
+    );
+    assert_eq!(
+        snap.sessions
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>(),
+        ["newer", "older"]
+    );
+    assert!(snap.sessions.iter().all(|s| s.context_window.is_none()));
+    assert!(snap.supports(Capability::History));
+    assert!(!snap.supports(Capability::ProviderQuota));
+    let json = serde_json::to_string(&snap).unwrap();
+    for private in [
+        "fixture conversation",
+        "fixture title",
+        "fixture diff",
+        "/private/projects",
+    ] {
+        assert!(!json.contains(private));
+    }
 }
 
 // ---------------------------------------------------- cross-provider ----

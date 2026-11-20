@@ -36,6 +36,15 @@ session_paths = []
 # Same as above, using ~/.claude/.credentials.json.
 network_quota = false
 
+[providers.opencode]
+enabled = true
+# Defaults to $XDG_DATA_HOME/opencode/opencode.db or
+# ~/.local/share/opencode/opencode.db. macOS (~/Library/Application Support)
+# and Windows (%LOCALAPPDATA%) platform fallbacks are unverified.
+# db_path = "~/.local/share/opencode/opencode.db"
+# Avoid counting usage already recorded by Claude Code's transcripts.
+skip_upstreams = ["claude-agent"]
+
 # A user-defined provider (Gemini, Ollama, OpenRouter, …) fed by JSON you
 # produce. See "Custom provider" below for the schema.
 [providers.custom]

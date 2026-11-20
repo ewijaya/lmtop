@@ -62,6 +62,15 @@ pub fn build_week(
     week_start: DateTime<Utc>,
     week_end: DateTime<Utc>,
 ) -> WeekAggregate {
+    build_week_with_fallback(events, week_start, week_end, "unknown")
+}
+
+pub(crate) fn build_week_with_fallback(
+    events: &[UsageEvent],
+    week_start: DateTime<Utc>,
+    week_end: DateTime<Utc>,
+    model_fallback: &str,
+) -> WeekAggregate {
     let mut tokens = TokenCounts::default();
     let mut by_model: BTreeMap<String, ModelWeekUsage> = BTreeMap::new();
     let mut sessions = std::collections::BTreeSet::new();
@@ -74,7 +83,7 @@ pub fn build_week(
         let model = ev
             .model
             .clone()
-            .unwrap_or_else(|| ModelIdentity::normalize("unknown"));
+            .unwrap_or_else(|| ModelIdentity::normalize(model_fallback));
         by_model
             .entry(model.raw.clone())
             .or_insert_with(|| ModelWeekUsage {

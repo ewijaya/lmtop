@@ -1,4 +1,4 @@
-//! Shared in-memory usage store used by both collectors: accumulates
+//! Shared in-memory usage store used by collectors: accumulates
 //! deduplicated usage events plus per-session metadata, and assembles
 //! normalized provider snapshots from them.
 
@@ -15,6 +15,7 @@ use super::SESSION_LOOKBACK_HOURS;
 
 /// Lookback for the tokens/minute column.
 const RATE_LOOKBACK_MINUTES: i64 = 5;
+pub(super) const OPENCODE_AUXILIARY: &str = "auxiliary (model unknown)";
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionRecord {
@@ -67,6 +68,12 @@ impl UsageStore {
                 .or_default()
                 .add(&tokens);
             record.last_model = Some(m.clone());
+        } else if self.provider == Provider::OpenCode {
+            record
+                .tokens_by_model
+                .entry(OPENCODE_AUXILIARY.into())
+                .or_default()
+                .add(&tokens);
         }
         if record.last_activity.is_none_or(|t| timestamp > t) {
             record.last_activity = Some(timestamp);
@@ -133,7 +140,16 @@ impl UsageStore {
             }
         }
 
-        let week = aggregation::build_week(&self.events, ctx.week_start, ctx.week_end);
+        let week = if self.provider == Provider::OpenCode {
+            aggregation::build_week_with_fallback(
+                &self.events,
+                ctx.week_start,
+                ctx.week_end,
+                OPENCODE_AUXILIARY,
+            )
+        } else {
+            aggregation::build_week(&self.events, ctx.week_start, ctx.week_end)
+        };
         let history =
             aggregation::build_history(&self.events, ctx.now, ctx.history_retention_minutes);
 

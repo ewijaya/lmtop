@@ -1,6 +1,6 @@
 [package]
 name = "lmtop"
-version = "0.3.9"
+version = "0.4.0"
 edition = "2024"
 description = "A live terminal monitor for language-model usage, quotas, and subscription capacity"
 repository = "https://github.com/ewijaya/lmtop"
@@ -53,3 +53,6 @@ ureq = { version = "2.12", default-features = false, features = ["native-tls", "
 # record sessions in SQLite instead of rollout JSONL files). `bundled`
 # compiles SQLite from source so musl releases stay self-contained.
 rusqlite = { version = "0.40.1", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"

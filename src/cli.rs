@@ -2,7 +2,8 @@
 
 use crate::app::{App, View};
 use crate::collectors::{
-    Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector, custom::CustomCollector,
+    Collector, ScanContext, claude::ClaudeCollector, codex::CodexCollector,
+    custom::CustomCollector, opencode::OpenCodeCollector,
 };
 use crate::config::Config;
 use crate::domain::{Provider, UsageSnapshot};
@@ -21,7 +22,7 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
 
-    /// Monitor a single provider (codex or claude).
+    /// Monitor a single provider (codex, claude, opencode, or custom).
     #[arg(long, global = true)]
     provider: Option<Provider>,
 
@@ -100,6 +101,7 @@ pub fn run() -> Result<()> {
     if let Some(provider) = cli.provider {
         cfg.providers.codex.enabled &= provider == Provider::Codex;
         cfg.providers.claude.enabled &= provider == Provider::Claude;
+        cfg.providers.opencode.enabled &= provider == Provider::OpenCode;
         cfg.providers.custom.enabled &= provider == Provider::Custom;
     }
 
@@ -142,6 +144,11 @@ fn build_collectors(cfg: &Config) -> Vec<Box<dyn Collector>> {
     if cfg.providers.claude.enabled {
         collectors.push(Box::new(ClaudeCollector::from_config(
             &cfg.providers.claude,
+        )));
+    }
+    if cfg.providers.opencode.enabled {
+        collectors.push(Box::new(OpenCodeCollector::from_config(
+            &cfg.providers.opencode,
         )));
     }
     if cfg.providers.custom.enabled {
@@ -353,7 +360,7 @@ fn render_line(snapshot: &UsageSnapshot, color: bool, now: chrono::DateTime<Utc>
         match p {
             Provider::Codex => "\x1b[38;5;75m",
             Provider::Claude => "\x1b[38;5;208m",
-            Provider::Custom => "\x1b[38;5;79m",
+            Provider::OpenCode | Provider::Custom => "\x1b[38;5;79m",
         }
     };
     let paint = |code: &str, text: &str| -> String {
@@ -366,6 +373,10 @@ fn render_line(snapshot: &UsageSnapshot, color: bool, now: chrono::DateTime<Utc>
 
     let mut parts: Vec<String> = Vec::new();
     for (provider, snap) in &snapshot.providers {
+        // The OpenCode status-line segment is introduced with its UI.
+        if *provider == Provider::OpenCode {
+            continue;
+        }
         let mut fields = vec![paint(provider_color(*provider), provider.display_name())];
         if snap.quota_windows.is_empty() {
             fields.push(paint(DIM, "n/a"));
@@ -513,7 +524,7 @@ fn tui_cmd(cfg: Config, provider_filter: Option<Provider>) -> Result<()> {
     app.view = match provider_filter {
         Some(Provider::Codex) => View::Codex,
         Some(Provider::Claude) => View::Claude,
-        Some(Provider::Custom) | None => View::Combined,
+        Some(Provider::OpenCode | Provider::Custom) | None => View::Combined,
     };
     app.reduced_motion = cfg.ui.reduced_motion;
     app.enabled_providers = Provider::ALL
@@ -522,6 +533,7 @@ fn tui_cmd(cfg: Config, provider_filter: Option<Provider>) -> Result<()> {
         .filter(|p| match p {
             Provider::Codex => cfg.providers.codex.enabled,
             Provider::Claude => cfg.providers.claude.enabled,
+            Provider::OpenCode => cfg.providers.opencode.enabled,
             Provider::Custom => cfg.providers.custom.enabled,
         })
         .collect();

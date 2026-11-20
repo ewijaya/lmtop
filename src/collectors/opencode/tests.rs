@@ -1,0 +1,429 @@
+use super::*;
+use crate::collectors::store::OPENCODE_AUXILIARY;
+use serde_json::json;
+use std::time::Instant;
+
+#[path = "../../../tests/support/opencode.rs"]
+mod fixture;
+use fixture::{Fixture, at, time, usage};
+
+fn ctx() -> ScanContext {
+    ScanContext {
+        now: time(0),
+        week_start: "2026-07-13T00:00:00Z".parse().unwrap(),
+        week_end: "2026-07-20T00:00:00Z".parse().unwrap(),
+        history_retention_minutes: 60,
+    }
+}
+
+fn collector(path: &Path) -> OpenCodeCollector {
+    OpenCodeCollector::from_config(&OpenCodeConfig {
+        db_path: Some(path.to_owned()),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn maps_output_including_reasoning_once() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    let mut data = usage("claude-opus-4-8", "claude-agent", -2, 4, 405);
+    data["tokens"]["reasoning"] = json!(222);
+    data["tokens"]["cache"] = json!({"read": 34435, "write": 997});
+    data["tokens"]["unrecognized"] = json!(123);
+    fixture.message("first", "a", -3, -2, data);
+    let mut collector = collector(&fixture.path);
+    collector.skip_upstreams.clear();
+    let snap = collector.scan(&ctx());
+    let tokens = snap.week.unwrap().tokens;
+    assert_eq!(tokens.output, 627);
+    assert_eq!(tokens.reasoning, 222);
+    assert_eq!(tokens.total(), 4 + 34435 + 997 + 627);
+    assert!(tokens.other.is_empty());
+    assert_eq!(snap.sessions[0].context_tokens, Some(4 + 34435 + 997));
+    assert_eq!(snap.sessions[0].context_window, None);
+}
+
+#[test]
+fn skips_claude_agent_per_message_unless_list_is_empty() {
+    let fixture = Fixture::new();
+    fixture.session("mixed", None, -10, -1);
+    fixture.session("mirrored", None, -10, -1);
+    fixture.message(
+        "1",
+        "mixed",
+        -5,
+        -4,
+        usage("gpt-6.2-sol", "openai", -4, 10, 2),
+    );
+    fixture.message(
+        "2",
+        "mixed",
+        -4,
+        -3,
+        usage("claude-opus-4-8", "claude-agent", -3, 20, 3),
+    );
+    fixture.message(
+        "3",
+        "mirrored",
+        -3,
+        -2,
+        usage("claude-opus-4-8", "claude-agent", -2, 30, 4),
+    );
+    let snap = collector(&fixture.path).scan(&ctx());
+    assert_eq!(snap.week.unwrap().tokens.total(), 12);
+    assert_eq!(snap.sessions.len(), 1);
+    assert_eq!(snap.sessions[0].id, "mixed");
+    assert_eq!(snap.sessions[0].model.as_ref().unwrap().raw, "gpt-6.2-sol");
+
+    let snap = OpenCodeCollector::from_config(&OpenCodeConfig {
+        db_path: Some(fixture.path.clone()),
+        skip_upstreams: vec![],
+        ..Default::default()
+    })
+    .scan(&ctx());
+    assert_eq!(snap.week.unwrap().tokens.total(), 69);
+    assert_eq!(snap.sessions.len(), 2);
+}
+
+#[test]
+fn in_flight_is_counted_only_once_completed() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    fixture.message(
+        "first",
+        "a",
+        -5,
+        -5,
+        json!({
+            "model": {"providerID": "openai", "id": "gpt-6.2-sol"},
+            "finish": null
+        }),
+    );
+    let mut collector = collector(&fixture.path);
+    let first = collector.scan(&ctx());
+    assert!(first.sessions.is_empty());
+    assert_eq!(first.week.unwrap().tokens.total(), 0);
+    fixture.message(
+        "first",
+        "a",
+        -5,
+        -2,
+        usage("gpt-6.2-sol", "openai", -2, 20, 22),
+    );
+    assert_eq!(collector.scan(&ctx()).week.unwrap().tokens.total(), 42);
+    assert_eq!(collector.scan(&ctx()).week.unwrap().tokens.total(), 42);
+}
+
+#[test]
+fn updates_record_only_the_saturating_delta_at_completion() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    let mut collector = collector(&fixture.path);
+    fixture.message(
+        "first",
+        "a",
+        -5,
+        -4,
+        usage("gpt-6.2-sol", "openai", -4, 20, 22),
+    );
+    assert_eq!(collector.scan(&ctx()).week.unwrap().tokens.total(), 42);
+    fixture.message(
+        "first",
+        "a",
+        -5,
+        -3,
+        usage("gpt-6.2-sol", "openai", -4, 40, 2),
+    );
+    let snap = collector.scan(&ctx());
+    let tokens = snap.week.unwrap().tokens;
+    assert_eq!((tokens.input, tokens.output), (40, 22));
+    let bucket = snap.history.iter().find(|b| b.at == time(-4)).unwrap();
+    assert_eq!((bucket.input_tokens, bucket.output_tokens), (40, 22));
+    assert_eq!(collector.scan(&ctx()).week.unwrap().tokens.total(), 62);
+}
+
+#[test]
+fn counts_errors_only_with_usage() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    for (id, output) in [("free", 0), ("billed", 9)] {
+        let mut data = usage("gpt-6.2-sol", "openai", -2, 0, output);
+        data["finish"] = json!("error");
+        fixture.message(id, "a", -3, -2, data);
+    }
+    let snap = collector(&fixture.path).scan(&ctx());
+    assert_eq!(snap.week.unwrap().tokens.total(), 9);
+    assert_eq!(
+        snap.health.message.as_deref(),
+        Some("1 failed messages without usage")
+    );
+}
+
+#[test]
+fn archived_session_still_counts() {
+    let fixture = Fixture::new();
+    fixture.session("archived", None, -10, -1);
+    fixture
+        .conn
+        .execute("UPDATE session_v2 SET time_archived = ?1", [at(-9)])
+        .unwrap();
+    fixture.message(
+        "first",
+        "archived",
+        -5,
+        -4,
+        usage("gpt-6.2-sol", "openai", -4, 3, 4),
+    );
+    let snap = collector(&fixture.path).scan(&ctx());
+    assert_eq!(snap.week.unwrap().tokens.total(), 7);
+    assert_eq!(snap.sessions[0].id, "archived");
+}
+
+#[test]
+fn rolls_child_and_grandchild_usage_into_root() {
+    let fixture = Fixture::new();
+    fixture.session("root", None, -20, -1);
+    fixture.session("child", Some("root"), -10, -2);
+    fixture.session("grandchild", Some("child"), -9, -2);
+    fixture.message(
+        "first",
+        "child",
+        -5,
+        -4,
+        usage("gpt-6.2-sol", "openai", -4, 3, 4),
+    );
+    fixture.message(
+        "second",
+        "grandchild",
+        -4,
+        -3,
+        usage("gpt-6.2-sol", "openai", -3, 5, 6),
+    );
+    let snap = collector(&fixture.path).scan(&ctx());
+    let week = snap.week.unwrap();
+    assert_eq!(week.tokens.total(), 18);
+    assert_eq!(week.sessions, 1);
+    assert_eq!(snap.sessions.len(), 1);
+    let root = &snap.sessions[0];
+    assert_eq!(root.id, "root");
+    assert_eq!(root.project.as_deref(), Some("root"));
+    assert_eq!(root.started_at, Some(time(-20)));
+    assert_eq!(root.last_activity, Some(time(-3)));
+}
+
+#[test]
+fn models_split_and_latest_completion_wins_even_if_older_message_was_updated_last() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -10, -1);
+    fixture.message(
+        "first",
+        "a",
+        -5,
+        -1,
+        usage("gpt-6.2-sol", "openai", -4, 3, 4),
+    );
+    fixture.message(
+        "second",
+        "a",
+        -4,
+        -3,
+        usage("gemini-9", "openrouter", -3, 5, 6),
+    );
+    let snap = collector(&fixture.path).scan(&ctx());
+    let session = &snap.sessions[0];
+    assert_eq!(session.tokens_by_model["gpt-6.2-sol"].total(), 7);
+    assert_eq!(session.tokens_by_model["gemini-9"].total(), 11);
+    assert_eq!(session.model.as_ref().unwrap().raw, "gemini-9");
+}
+
+#[test]
+fn counts_only_safe_residuals_against_lifetime_messages() {
+    let fixture = Fixture::new();
+    let historical = -7 * 24 * 60;
+    for id in ["safe", "mixed"] {
+        fixture.session(id, None, historical - 2, -1);
+        fixture.message(id, id, -6, -4, usage("gpt-6.2-sol", "openai", -4, 3, 4));
+    }
+    fixture.conn.execute(
+        "UPDATE session_v2 SET tokens_input=20, tokens_output=3, tokens_reasoning=5, tokens_cache_write=2",
+        [],
+    ).unwrap();
+    fixture.message(
+        "s-old",
+        "safe",
+        historical - 1,
+        historical,
+        usage("gpt-6.2-sol", "openai", historical, 10, 1),
+    );
+    fixture.message(
+        "m-old",
+        "mixed",
+        historical - 1,
+        historical,
+        usage("claude-opus-4-8", "claude-agent", historical, 10, 1),
+    );
+    let mut collector = collector(&fixture.path);
+    let snap = collector.scan(&ctx());
+    let week = snap.week.unwrap();
+    let auxiliary = &week.by_model[OPENCODE_AUXILIARY].tokens;
+    assert_eq!(
+        (auxiliary.input, auxiliary.output, auxiliary.cache_creation),
+        (7, 5, 2)
+    );
+    assert_eq!(auxiliary.reasoning, 5);
+    assert_eq!(week.tokens.total(), 7 + 7 + 14);
+    let mixed = snap.sessions.iter().find(|s| s.id == "mixed").unwrap();
+    assert!(!mixed.tokens_by_model.contains_key(OPENCODE_AUXILIARY));
+    let safe = snap.sessions.iter().find(|s| s.id == "safe").unwrap();
+    assert_eq!(safe.tokens_by_model[OPENCODE_AUXILIARY].total(), 14);
+    assert_eq!(safe.last_activity, Some(time(-4)));
+    assert_eq!(safe.model.as_ref().unwrap().raw, "gpt-6.2-sol");
+    assert_eq!(
+        snap.history
+            .iter()
+            .find(|b| b.at == time(-1))
+            .unwrap()
+            .output_tokens,
+        5
+    );
+    // Session metadata/tallies can change without a new message timestamp.
+    fixture
+        .conn
+        .execute(
+            "UPDATE session_v2 SET tokens_reasoning=1 WHERE id='safe'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(collector.scan(&ctx()).week.unwrap().tokens.total(), 24);
+    fixture.message(
+        "s-late",
+        "safe",
+        -5,
+        0,
+        usage("claude-opus-4-8", "claude-agent", -3, 0, 0),
+    );
+    let snap = collector.scan(&ctx());
+    assert_eq!(snap.week.unwrap().tokens.total(), 14);
+}
+
+#[test]
+fn schema_drift_is_unavailable_and_corrupt_file_is_degraded() {
+    for ddl in [
+        "DROP TABLE session_message",
+        "ALTER TABLE session_message DROP COLUMN time_updated",
+    ] {
+        let fixture = Fixture::new();
+        fixture.conn.execute_batch(ddl).unwrap();
+        let snap = collector(&fixture.path).scan(&ctx());
+        assert_eq!(snap.health.status, CollectorStatus::Unavailable);
+        assert_eq!(
+            snap.health.message.as_deref(),
+            Some(
+                "unsupported OpenCode schema (latest migration 20261116213417_automation_active_index)"
+            )
+        );
+        assert!(snap.week.is_none());
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("not-a-db");
+    std::fs::write(&path, b"plain text").unwrap();
+    let snap = collector(&path).scan(&ctx());
+    assert_eq!(snap.health.status, CollectorStatus::Degraded);
+    assert!(snap.week.is_none());
+    assert_eq!(
+        collector(&dir.path().join("missing.db"))
+            .scan(&ctx())
+            .health
+            .status,
+        CollectorStatus::Unavailable
+    );
+}
+
+#[test]
+fn locked_database_degrades_within_busy_timeout() {
+    let fixture = Fixture::new();
+    // Normal WAL writes don't lock readers; force contention with an
+    // exclusive write transaction in rollback-journal mode.
+    fixture
+        .conn
+        .execute_batch("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE;")
+        .unwrap();
+    let mut collector = collector(&fixture.path);
+    let start = Instant::now();
+    let snap = collector.scan(&ctx());
+    assert!(start.elapsed() < BUSY_TIMEOUT + Duration::from_millis(250));
+    assert_eq!(snap.health.status, CollectorStatus::Degraded);
+    assert_eq!(
+        snap.health.message.as_deref(),
+        Some("OpenCode database is locked")
+    );
+    assert!(snap.week.is_none());
+    fixture.conn.execute_batch("ROLLBACK;").unwrap();
+    assert_eq!(collector.scan(&ctx()).health.status, CollectorStatus::Ok);
+}
+
+#[test]
+fn maps_known_effort_only_and_does_not_inherit() {
+    let fixture = Fixture::new();
+    fixture.session("a", None, -30, -1);
+    let mut collector = collector(&fixture.path);
+    for (i, (variant, expected)) in [
+        (json!("minimal"), Some("minimal")),
+        (json!("low"), Some("low")),
+        (json!("medium"), Some("medium")),
+        (json!("high"), Some("high")),
+        (json!("xhigh"), Some("xhigh")),
+        (json!("default"), None),
+        (json!("future"), None),
+        (json!(42), None),
+        (json!(null), None),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let minute = i as i64 - 20;
+        let mut data = usage("gpt-6.2-sol", "openai", minute, 2, 3);
+        data["model"]["variant"] = variant;
+        fixture.message(&format!("turn-{i}"), "a", minute, minute, data);
+        let snap = collector.scan(&ctx());
+        assert_eq!(snap.sessions[0].reasoning_effort.as_deref(), expected);
+    }
+}
+
+#[test]
+fn sql_projections_stay_on_the_metadata_allowlist() {
+    for sql in [MESSAGES, RESIDUALS, SESSION] {
+        for forbidden in [
+            "content",
+            "session_part",
+            "title",
+            "diff",
+            "credential",
+            "cost",
+            "SELECT *",
+        ] {
+            assert!(!sql.contains(forbidden), "{forbidden} in usage SQL");
+        }
+        for (i, _) in sql.match_indices("m.data") {
+            assert!(sql[..i].ends_with("json_extract("));
+            let path = sql[i..].split('\'').nth(1).unwrap();
+            assert!(
+                matches!(
+                    path,
+                    "$.model.providerID"
+                        | "$.model.id"
+                        | "$.model.variant"
+                        | "$.time.completed"
+                        | "$.finish"
+                        | "$.tokens.input"
+                        | "$.tokens.output"
+                        | "$.tokens.reasoning"
+                        | "$.tokens.cache.read"
+                        | "$.tokens.cache.write"
+                ),
+                "unexpected path {path}"
+            );
+        }
+    }
+}

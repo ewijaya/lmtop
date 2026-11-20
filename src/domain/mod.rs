@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 pub enum Provider {
     Codex,
     Claude,
+    OpenCode,
     Custom,
 }
 
@@ -44,12 +45,18 @@ pub fn set_custom_provider_label(name: &str) {
 }
 
 impl Provider {
-    pub const ALL: [Provider; 3] = [Provider::Codex, Provider::Claude, Provider::Custom];
+    pub const ALL: [Provider; 4] = [
+        Provider::Codex,
+        Provider::Claude,
+        Provider::OpenCode,
+        Provider::Custom,
+    ];
 
     pub fn display_name(self) -> &'static str {
         match self {
             Provider::Codex => "Codex",
             Provider::Claude => "Claude",
+            Provider::OpenCode => "OpenCode",
             Provider::Custom => CUSTOM_LABEL.get().copied().unwrap_or("Custom"),
         }
     }
@@ -68,6 +75,7 @@ impl std::str::FromStr for Provider {
         match s.to_ascii_lowercase().as_str() {
             "codex" => Ok(Provider::Codex),
             "claude" => Ok(Provider::Claude),
+            "opencode" => Ok(Provider::OpenCode),
             "custom" => Ok(Provider::Custom),
             other => Err(format!("unknown provider: {other}")),
         }

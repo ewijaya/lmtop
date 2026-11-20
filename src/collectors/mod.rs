@@ -10,6 +10,7 @@ mod codex_db;
 pub mod custom;
 mod jsonl;
 pub mod live_quota;
+pub mod opencode;
 mod store;
 
 use crate::domain::{Provider, ProviderSnapshot};

@@ -21,9 +21,30 @@ pub struct Config {
 pub struct ProvidersConfig {
     pub codex: ProviderConfig,
     pub claude: ProviderConfig,
+    pub opencode: OpenCodeConfig,
     /// A user-defined provider fed by an external JSON source; see
     /// `docs/configuration.md` for the schema.
     pub custom: CustomProviderConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct OpenCodeConfig {
+    pub enabled: bool,
+    /// Override automatic SQLite database discovery.
+    pub db_path: Option<PathBuf>,
+    /// Upstreams whose usage is already counted by another collector.
+    pub skip_upstreams: Vec<String>,
+}
+
+impl Default for OpenCodeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            db_path: None,
+            skip_upstreams: vec!["claude-agent".into()],
+        }
+    }
 }
 
 /// A provider lmtop has no built-in collector for (Gemini, Ollama,
@@ -241,6 +262,9 @@ mod tests {
     fn default_config_is_valid() {
         let c = Config::default();
         assert!(c.providers.codex.enabled);
+        assert!(c.providers.opencode.enabled);
+        assert_eq!(c.providers.opencode.db_path, None);
+        assert_eq!(c.providers.opencode.skip_upstreams, ["claude-agent"]);
         assert_eq!(c.ui.refresh_secs, 5);
         assert_eq!(c.ui.graph_symbol, "braille");
         assert_eq!(c.time.week_start_day(), Weekday::Mon);
@@ -308,6 +332,18 @@ mod tests {
             d.providers.codex.network_quota
         );
         assert_eq!(parsed.providers.claude.enabled, d.providers.claude.enabled);
+        assert_eq!(
+            parsed.providers.opencode.enabled,
+            d.providers.opencode.enabled
+        );
+        assert_eq!(
+            parsed.providers.opencode.db_path,
+            d.providers.opencode.db_path
+        );
+        assert_eq!(
+            parsed.providers.opencode.skip_upstreams,
+            d.providers.opencode.skip_upstreams
+        );
         assert_eq!(parsed.providers.custom.enabled, d.providers.custom.enabled);
         assert_eq!(parsed.providers.custom.name, d.providers.custom.name);
         assert_eq!(parsed.time.week_start_day(), d.time.week_start_day());

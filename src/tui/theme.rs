@@ -519,7 +519,9 @@ impl Theme {
         match provider {
             Provider::Codex => self.color(self.palette().codex, Color::Cyan),
             Provider::Claude => self.color(self.palette().claude, Color::Yellow),
-            Provider::Custom => self.color(self.palette().custom, Color::Magenta),
+            Provider::OpenCode | Provider::Custom => {
+                self.color(self.palette().custom, Color::Magenta)
+            }
         }
     }
 
@@ -527,7 +529,9 @@ impl Theme {
         match provider {
             Provider::Codex => self.color(self.palette().codex_dim, Color::Blue),
             Provider::Claude => self.color(self.palette().claude_dim, Color::DarkGray),
-            Provider::Custom => self.color(self.palette().custom_dim, Color::DarkGray),
+            Provider::OpenCode | Provider::Custom => {
+                self.color(self.palette().custom_dim, Color::DarkGray)
+            }
         }
     }
 
