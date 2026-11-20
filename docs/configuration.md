@@ -134,6 +134,26 @@ the underlying data is less than an hour old — stale local snapshots never
 alert. Alerts fire from the interactive dashboard, not from `snapshot` or
 `line`.
 
+## OpenCode
+
+`[providers.opencode]` is enabled by default. If no SQLite database is
+found, the dedicated OpenCode view and `doctor` report it as unavailable;
+the combined view, planner, and `line` omit it. Set `db_path` to override
+discovery (a leading `~/` is expanded). See
+[`data-sources.md`](data-sources.md#opencode) for the path order.
+
+`skip_upstreams = ["claude-agent"]` keeps usage mirrored in Claude Code
+transcripts out of OpenCode totals. Disabling the Claude collector does
+not change the skip list. If you want OpenCode to count those messages
+instead, set `skip_upstreams = []`; keeping both collectors enabled in that
+configuration can double count the same usage. `doctor` reports skipped
+messages and tokens by upstream and warns if `claude-agent` is skipped
+but no recent Claude sessions were found.
+
+OpenCode has no `network_quota` option. A shared-plan pointer uses local
+auth classification only; `--live` refreshes the referenced Codex or
+Claude quota panel when that collector is enabled.
+
 ## Custom provider
 
 `[providers.custom]` wires in any provider lmtop has no built-in collector
@@ -170,7 +190,7 @@ providers. Capabilities are inferred from which fields you provide.
 Flags override the config file:
 
 ```text
---provider codex|claude|custom   monitor one provider only
+--provider codex|claude|opencode|custom  monitor one provider only
 --offline                        disable all network access
 --live                           network_quota = true for all enabled providers
 --refresh <secs>                 collector refresh interval
@@ -192,3 +212,5 @@ lmtop doctor          discovery, parse health, capabilities
 `lmtop line` is built for embedding: tmux `status-right`, starship custom
 commands, waybar `custom` modules, or a Claude Code statusline. Colors are
 emitted only when stdout is a terminal (force with `--color`).
+When an OpenCode database is available, its segment shows observed
+calendar-week tokens, not a quota percentage.

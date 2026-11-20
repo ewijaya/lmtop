@@ -12,12 +12,28 @@ anything else.
 | Claude Code session logs (`~/.claude/projects/`) | session id, timestamps, working-directory basename, model ids, per-request token usage | message content, tool output, attachments |
 | Claude Code quota cache (`~/.claude.json` → `cachedUsageUtilization` only) | quota percentages, reset times, model-scoped limit percentages, fetch time | every other key in the file — account ids, OAuth metadata, machine ids, feature flags |
 | Codex state database (`~/.codex/state_N.sqlite`, `threads` table, read-only) | thread id, timestamps, working-directory basename, model id, cumulative token total | thread titles, first user messages, previews, git metadata, every other column and table |
+| OpenCode SQLite database (`opencode.db`, read-only) | session/message IDs and timestamps, working-directory basename, model and upstream IDs, effort, token counters, schema version, auth classification for plan pointers | message bodies, parts, titles, diffs, cost, credential values |
 | Custom provider source (only if you configure one) | the JSON you point it at | — |
 
 Session files are parsed line by line for the specific metadata fields
 above. Prompt bodies, assistant output, and tool results are present in
 those files but are **never stored, aggregated, logged, or displayed** —
 parsing extracts token counts and identifiers only.
+
+### OpenCode SQLite
+
+The database is opened read-only with a 100 ms busy timeout and is never
+written to. Queries select only the usage metadata listed in
+[`data-sources.md`](data-sources.md#opencode). SQLite extracts the named
+JSON paths with `json_extract`; raw message JSON, message parts, titles
+and diffs are not returned to the collector. Only the directory basename
+is retained.
+
+For plan pointers, when there is eligible OpenAI or Anthropic usage, the
+`credential` query selects only `integration_id` and the auth
+classification fields `$.type` and `$.methodID`. The raw credential
+value, API keys, and access and refresh tokens are never selected.
+OpenCode does not make network calls for this feature.
 
 ## Opt-in live quota (`network_quota` / `--live`)
 
@@ -46,11 +62,12 @@ Disabled by default. When you enable it, and only then:
 
 ## What is never done
 
-- **No credential access without opt-in.** By default, authentication
-  files (`auth.json`, OAuth tokens, keychains) are never read, printed,
-  persisted, uploaded, or logged. `doctor` reports only whether an auth
-  artifact *exists*. With `network_quota` enabled, only the token fields
-  listed above are read, for the single purpose described above.
+- **No credential secrets without opt-in.** By default, token material
+  from authentication files (`auth.json`, `.credentials.json`, keychains)
+  is never read, printed, persisted, uploaded, or logged. OpenCode's
+  auth classification above is non-secret metadata, not credential
+  material. With `network_quota` enabled, only the token fields listed
+  above are read for the single purpose described above.
 - **No credential modification.** Codex and Claude authentication files
   are never written to.
 - **No network calls by default.** Without `network_quota`/`--live`, zero

@@ -6,7 +6,7 @@ subscription capacity.**
 lmtop ("language-model top", lowercase like `top`, `htop`, and `btop`) is a
 Rust/Ratatui terminal dashboard for monitoring usage, rate limits, rolling
 quota windows, reset times, burn velocity, and projected exhaustion across
-AI coding agents such as OpenAI Codex and Claude Code. It is designed
+AI coding agents including OpenAI Codex, Claude Code, and OpenCode. It is designed
 especially for users on flat-rate subscription plans rather than API-only
 billing.
 
@@ -59,17 +59,17 @@ never labeled as one.
 
 ## Supported providers and capabilities
 
-| Capability | Codex | Claude Code |
-|---|---|---|
-| local_token_usage | ✅ | ✅ |
-| active_session | ✅ | ✅ |
-| calendar_week_aggregation | ✅ | ✅ |
-| model_breakdown | ✅ | ✅ |
-| provider_quota | ✅ (local rate-limit snapshots, or live with `--live`) | ✅ (Claude Code's local quota cache, or live with `--live`) |
-| credits | ✅ (when reported; always with `--live`) | ❌ |
-| reset_times | ✅ | ✅ |
-| model-scoped limits | ❌ (not reported) | ✅ (e.g. a per-model weekly cap) |
-| history | ✅ | ✅ |
+| Capability | Codex | Claude Code | OpenCode |
+|---|---|---|---|
+| local_token_usage | ✅ | ✅ | ✅ (read-only SQLite) |
+| active_session | ✅ | ✅ | ✅ |
+| calendar_week_aggregation | ✅ | ✅ | ✅ |
+| model_breakdown | ✅ | ✅ | ✅ |
+| provider_quota | ✅ (local rate-limit snapshots, or live with `--live`) | ✅ (Claude Code's local quota cache, or live with `--live`) | ❌ (shared-plan pointer only) |
+| credits | ✅ (when reported; always with `--live`) | ❌ | ❌ |
+| reset_times | ✅ | ✅ | ❌ |
+| model-scoped limits | ❌ (not reported) | ✅ (e.g. a per-model weekly cap) | ❌ |
+| history | ✅ | ✅ | ✅ |
 
 Unavailable capabilities are shown as *unavailable*, never invented. See
 `docs/data-sources.md` for exactly where each number comes from and
@@ -154,6 +154,7 @@ lmtop                     # combined dashboard
 lmtop --live              # + live quota from the providers (opt-in network)
 lmtop --provider codex    # Codex only
 lmtop --provider claude   # Claude only
+lmtop --provider opencode # OpenCode only
 lmtop --offline           # never touch the network
 lmtop --refresh 5         # rescan every 5 seconds
 lmtop --ascii             # ASCII bars/charts
@@ -166,11 +167,12 @@ lmtop --version
 
 ### Status-bar embedding (`lmtop line`)
 
-`lmtop line` prints a single colored line — per provider, every quota
-window plus the worst outlook marker — and exits:
+`lmtop line` prints a single colored line and exits. For Codex and Claude,
+it shows quota windows and the worst outlook marker. OpenCode shows
+observed calendar-week tokens when available:
 
 ```text
-Codex wk 42% · Claude 5h 26% wk 13% wk·Fable 19%
+Codex wk 42% · Claude 5h 26% wk 13% wk·Fable 19% · OpenCode wk 2.86M tok
 ```
 
 Drop it into tmux (`set -g status-right '#(lmtop line --color)'`), a
@@ -198,6 +200,7 @@ has the exact contract). `--offline` always wins over `--live`.
 2        Claude view             Enter  Session detail overlay
 3        Combined view           o / O  Cycle / reverse session sort
 4        Planner view            /      Filter sessions (Esc clears)
+5        OpenCode view
 s        Focus sessions          v      Rate ⇄ quota timeline chart
 m        Focus model breakdown   ←/→    Pan chart back through history
 w        Focus weekly usage      +/-    Zoom chart window
@@ -212,9 +215,19 @@ The mouse works too: click to focus a panel, click a session to select it
 scroll to move through sessions or pan the chart.
 
 The sessions table shows an **Effort** column for the latest Codex rollout
-turn's reasoning setting. Press Enter on a session to see it in the detail
-popup as well. Missing effort is shown as `-` / "not reported"; Claude and
-Codex SQLite-only sessions do not currently report it in lmtop.
+turn or OpenCode message with a recognized setting. Press Enter on a
+session to see details, including the latest counted upstream in OpenCode.
+Missing effort is shown as `-` / "not reported"; Claude and Codex
+SQLite-only sessions do not report it in lmtop.
+
+## OpenCode (key 5)
+
+OpenCode is enabled by default. Its observed tokens are reported separately
+from Codex and Claude, even if they share a plan. `claude-agent` is excluded
+by default because Claude Code already records those messages. OpenCode
+has no quota of its own; where local metadata identifies a shared plan,
+the panel points to Codex or Claude for quota. Run `lmtop doctor` to check
+the database path, schema, and counted or skipped usage.
 
 ## Planner view (key 4)
 
@@ -224,6 +237,7 @@ rate next to the *sustainable* burn rate (what you could spend per hour
 and still make the reset), projects the percentage you'll reach at reset,
 and plots a 6-hour quota trend sparkline — plus calendar-week pacing from
 observed tokens (clearly labeled, never conflated with quota).
+OpenCode shows only calendar-week pacing.
 
 ## History & the quota sawtooth
 
@@ -326,12 +340,11 @@ Honesty section — read this before trusting any number:
 
 ## Privacy
 
-Local-first: no network calls, no telemetry, no API keys, no credential
-reads, no prompt content — collectors parse token counts and identifiers
-from session metadata and nothing else. The one exception is the opt-in
-`--live` quota fetch described above, which reads each CLI's stored access
-token solely to call that provider's own usage endpoint. Full model:
-`docs/privacy.md`.
+Local-first: no network calls by default, no telemetry, and no prompt
+content selected. OpenCode's plan pointer reads only non-secret auth
+classification metadata, never credential values. The opt-in `--live`
+quota fetch for Codex or Claude may use the CLI's stored access token
+solely to call that provider's own usage endpoint. See `docs/privacy.md`.
 
 ## Platform status
 

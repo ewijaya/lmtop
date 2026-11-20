@@ -1,7 +1,7 @@
 # Architecture
 
-`lmtop` is a local-first terminal dashboard that monitors Codex CLI and
-Claude Code usage. The design has one central rule: **provider collection is
+`lmtop` is a local-first terminal dashboard that monitors Codex CLI,
+Claude Code, and OpenCode usage. The design has one central rule: **provider collection is
 completely separate from rendering.** The UI depends only on normalized
 domain types; nothing outside a collector ever sees a provider schema.
 
@@ -15,7 +15,7 @@ domain types; nothing outside a collector ever sees a provider schema.
 │ domain/         normalized types (the only shared language)│
 ├────────────────────────────────────────────────────────────┤
 │ aggregation/    week windows, history buckets, rates       │
-│ collectors/     codex.rs, claude.rs, incremental JSONL     │
+│ collectors/     usage readers for JSONL, SQLite, custom    │
 │ diagnostics/    doctor, redaction                          │
 │ config.rs       TOML config with full defaults             │
 └────────────────────────────────────────────────────────────┘
@@ -25,16 +25,17 @@ domain types; nothing outside a collector ever sees a provider schema.
 
 Normalized types shared by every layer:
 
-- `Provider` — Codex or Claude.
+- `Provider` — Codex, Claude, OpenCode, or a configured custom provider.
 - `ModelIdentity` — raw model id (always preserved) + normalized display
   name + `ModelFamily` (Fable, Opus, Sonnet, Haiku, GPT, Other). Unknown and
   future models are grouped under `Other`, never dropped.
 - `TokenCounts` — input, cached input, cache-creation input, output,
   reasoning, plus a map of unknown categories kept for forward
   compatibility. **Displayed totals include cached input**
-  (`total = input + cached_input + cache_creation + output`); reasoning is
+  (`total = input + cached_input + cache_creation + output + unattributed`); reasoning is
   an informational subset of output.
-- `SessionUsage` — per-session usage metadata (never prompt bodies).
+- `SessionUsage` — per-session usage metadata (never prompt bodies),
+  including OpenCode's latest counted upstream when known.
 - `WeekAggregate` — calendar-week totals with a per-model breakdown.
 - `QuotaWindow` / `QuotaWindowKind` — provider-reported rolling quota
   windows, classified by duration (~300 min → five-hour, ~10 080 min →
@@ -57,7 +58,7 @@ tokens are never presented as quota consumption.
 
 ### Collectors (`src/collectors/`)
 
-`CodexCollector` and `ClaudeCollector` implement one trait:
+Built-in and configured custom collectors implement one trait:
 
 ```rust
 pub trait Collector: Send {
@@ -72,10 +73,10 @@ clocks.
 
 Each collector owns:
 
-- **Discovery** — finding session files under the provider's data
-  directory (plus configured extra paths), filtered by mtime so only files
-  that can contribute to the current week or session view are read.
-- **Incremental ingestion** — `JsonlTail` tracks a byte offset per file;
+- **Discovery** — finding local session files or databases, including
+  configured paths. JSONL discovery filters by mtime; SQLite queries limit
+  usage scans by time.
+- **Incremental JSONL ingestion** — `JsonlTail` tracks a byte offset per file;
   a grown file has only its new bytes parsed, truncation/rotation resets
   the cursor, and a partial trailing line is left unconsumed until the
   writer finishes it. Corrupt lines increment a parse-error counter and are
@@ -88,11 +89,20 @@ Each collector owns:
   unique API request. Forked/resumed sessions that inherit history lines
   are deduplicated by the same key, and active/archived copies of the same
   session collapse together.
+- **SQLite usage accounting** (OpenCode) — fingerprint the schema and
+  extract the allowlisted message metadata in SQL. A per-message ledger
+  tracks token updates, while a timestamp high-water mark avoids
+  rebuilding unchanged usage. A separate reconciliation pass checks
+  lifetime message totals and excluded upstreams for recently updated
+  sessions; only safe residuals become events.
+- **Plan pointers** (OpenCode) — normalized links to Codex or Claude
+  quota panels. The pointer does not add capabilities, quota readings,
+  or token events to either provider.
 - **Capability reporting** — each collector declares exactly what it can
   provide (`local_token_usage`, `provider_quota`, `credits`, …). The UI
   renders missing capabilities as "unavailable", not as errors.
 
-Both collectors feed a shared `UsageStore`, which accumulates deduplicated
+Collectors feed a shared `UsageStore`, which accumulates deduplicated
 delta events plus per-session records and assembles `ProviderSnapshot`s via
 the aggregation layer.
 
@@ -135,11 +145,11 @@ TUI thread (synchronous) ◄─────┘
 
 ### Storage decision
 
-The MVP keeps history **in memory only**. The rate chart needs the last
-hour, which is reconstructed on startup from event timestamps already
-present in the session files, so a database adds no user-visible value yet.
-`rusqlite` was deliberately left out; long-horizon persistent history is a
-possible follow-up and would live behind `storage/`.
+The live rate chart is reconstructed from retained event timestamps.
+Optional `persist.rs` history stores only minute buckets and quota samples
+as JSONL; it does not copy transcripts or agent databases. `rusqlite` is
+used for read-only access to Codex and OpenCode's own databases, not as a
+storage engine for lmtop.
 
 Filesystem watching (`notify`) was also left out deliberately: interval
 scanning with per-file offsets is cheap (only grown files are re-read),
@@ -147,9 +157,9 @@ works over network mounts and WSL, and keeps the collector loop simple.
 
 ## Testing strategy
 
-- Sanitized synthetic fixtures under `tests/fixtures/` for both providers —
-  no real session data is committed.
+- Sanitized synthetic JSONL fixtures under `tests/fixtures/` and temporary
+  SQLite databases built by tests — no real session data is committed.
 - Unit tests co-located with each module (week math, DST, normalization,
   quota classification, incremental reads, dedup).
-- Integration tests drive whole collectors over fixture directories with a
+- Integration tests drive whole collectors over synthetic sources with a
   deterministic `ScanContext` clock.

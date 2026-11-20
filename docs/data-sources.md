@@ -1,10 +1,9 @@
 # Data sources
 
-Everything below was verified against live installations on 2026-07-17
-(Codex CLI 0.x rollout format; Claude Code 2.1.x). Field lists show only
-what the collectors consume — both formats contain far more, including
-conversation content, which is deliberately never read into memory
-structures (see `docs/privacy.md`).
+Codex CLI 0.x rollouts and Claude Code 2.1.x were checked against live
+installations on 2026-07-17; OpenCode v2.3.2 was checked on 2026-11-20.
+Field lists show only what the collectors consume. Conversation content
+is never returned to the collectors as parsed data (see `docs/privacy.md`).
 
 ## Codex CLI
 
@@ -37,8 +36,7 @@ including mid-session model switches, and showing the latest turn's
 reasoning effort in the sessions table and detail popup. Missing, null,
 or empty effort values are shown as unavailable; they never inherit a
 previous turn's effort. JSON snapshots expose this as `reasoning_effort`.
-Effort is currently collected only from Codex rollout logs; Claude and
-Codex SQLite-only sessions show it as unavailable.
+Claude and Codex SQLite-only sessions show effort as unavailable.
 
 ### `event_msg` with `payload.type == "token_count"`
 
@@ -197,6 +195,77 @@ Claude exposes no local credit balance, so `credits` is never declared.
 - Everything in `~/.claude.json` other than `cachedUsageUtilization`.
 - Sidechain agent transcripts beyond their usage fields.
 
+## OpenCode
+
+**Location:** an explicit `[providers.opencode].db_path` overrides
+discovery. Otherwise lmtop checks `$XDG_DATA_HOME/opencode/opencode.db`
+(if set to an absolute path), then `~/.local/share/opencode/opencode.db`.
+Linux/XDG was tested. The macOS fallback
+`~/Library/Application Support/opencode/opencode.db` and Windows fallback
+`%LOCALAPPDATA%\opencode\opencode.db` are best effort and **unverified**.
+Legacy JSON storage is not read.
+
+The SQLite database is opened read-only with a 100 ms busy timeout.
+Verified schema: OpenCode **v2.3.2**, migration
+`20261116213417_automation_active_index`. Missing required tables or
+columns make OpenCode usage unavailable; corrupt or locked databases
+degrade OpenCode health without stopping lmtop. `doctor` shows the
+redacted database path, OpenCode version, and latest migration when known.
+
+### Sessions and messages
+
+From `session_v2`, lmtop consumes the session ID, parent ID, working
+directory basename, creation/update timestamps (milliseconds), and
+session counters for reconciliation. Version and archive time are
+diagnostic fields. Archived usage still counts, and child sessions roll
+up to the root.
+
+From `session_message`, only assistant rows are used. lmtop reads the
+message and session IDs, creation/update timestamps, and these JSON paths
+via SQL `json_extract`:
+
+| Paths | Use |
+|---|---|
+| `$.model.providerID`, `$.model.id`, `$.model.variant` | Upstream, model, and reasoning effort |
+| `$.time.completed`, `$.finish` | Event time and completion/error eligibility |
+| `$.tokens.input`, `$.tokens.output`, `$.tokens.reasoning`, `$.tokens.cache.read`, `$.tokens.cache.write` | Per-message token usage |
+
+- A message counts once it has a completion timestamp and recorded usage.
+  Errors with tokens count; errors with no recorded tokens are reported in
+  `doctor`. Later token increases are added as deltas, not duplicate turns.
+- `input` excludes cache reads and writes. lmtop's `output` is OpenCode's
+  `output + reasoning`; reasoning is also shown as an informational subset,
+  not added again to the total. The mapping was matched against Claude
+  Code transcripts (`405 + 222 = 627` output tokens). The maintainer also
+  reports checking a `gpt-6.2-sol` turn against raw OpenAI response usage;
+  this does not independently verify every upstream. Unknown token paths
+  are not collected.
+- `claude-agent` is skipped by default because its usage already appears
+  in Claude Code transcripts. The rule applies per message, not per
+  session. Direct Anthropic API traffic through OpenCode is not mirrored
+  by Claude Code and is counted under OpenCode.
+- The latest counted message supplies the model, upstream, and any
+  recognized effort (`minimal`, `low`, `medium`, `high`, `xhigh`).
+  Context tokens are input plus cache reads and writes on that turn.
+  Context limits are **unavailable**; no window size is inferred.
+
+### Auxiliary calls and quota
+
+Session counters sometimes exceed the sum of all completed messages in
+the session. For each token category, a positive difference is included
+at the session update time under **auxiliary (model unknown)** only if
+all assistant upstreams are known and counted. A skipped or unknown
+upstream withholds the residual. `doctor` separates counted and withheld
+auxiliary tokens; a visible session shows its withheld total in the detail
+popup. These are observed token totals, not cost or quota estimates.
+
+OpenCode has no quota of its own. If observed upstream traffic and local
+auth metadata indicate a shared plan, the quota area points to Codex for
+ChatGPT or to Claude for Anthropic OAuth. The pointer does not prove
+which plan paid for an individual turn. No quota percentages or session
+tokens are moved between providers. `--live` refreshes the plan's own
+Codex or Claude panel, not OpenCode.
+
 ## Live quota (opt-in, `network_quota = true` / `--live`)
 
 For Codex, live quota is fetched by asking the Codex CLI itself first:
@@ -258,8 +327,9 @@ the cost of two authenticated GETs per refresh interval.
 
 ## Schema drift
 
-Both formats are undocumented and change between CLI versions. The
+Provider storage formats can change between CLI versions. The
 collectors parse defensively (missing fields degrade to "unknown", never
 panic), count parse errors into collector health, and unknown quota-window
 durations render as unknown windows instead of being force-fitted into the
-five-hour/weekly buckets.
+five-hour/weekly buckets. OpenCode fingerprints its SQLite schema before
+reading usage rather than partially parsing an unsupported schema.
